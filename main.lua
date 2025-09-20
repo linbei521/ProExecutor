@@ -215,7 +215,7 @@ function ProExecutor:CreateSidePanel()
     
     -- 创建Tab按钮
     self.scriptTab = self.ui:CreateTabButton(self.tabContainer, "脚本", UDim2.new(0, 2, 0, 2), true)
-    self.httpSpyTab = self.ui:CreateTabButton(self.tabContainer, "监控", UDim2.new(0.5, 1, 0, 2), false)
+    self.httpSpyTab = self.ui:CreateTabButton(self.tabContainer, "监控", UDim2.new(0.5, -8, 0, 2), false)
     
     -- 创建脚本列表面板
     local scriptPanelData = self.ui:CreateScriptListPanel(self.tabContentContainer)
@@ -240,12 +240,14 @@ function ProExecutor:CreateEditorArea()
     self.editorFrame.Size = UDim2.new(1, -104, 1, 0)
     self.editorFrame.Position = UDim2.new(0, 104, 0, 0)
     self.editorFrame.BackgroundTransparency = 1
+    self.editorFrame.ZIndex = 1
     self.editorFrame.Parent = self.mainContainer
 
     -- 编辑器内容容器
     self.editorContentContainer = Instance.new("Frame")
     self.editorContentContainer.Size = UDim2.new(1, 0, 1, 0)
     self.editorContentContainer.BackgroundTransparency = 1
+    self.editorContentContainer.ZIndex = 1
     self.editorContentContainer.Parent = self.editorFrame
 
     -- 创建代码编辑器界面
@@ -517,12 +519,12 @@ function ProExecutor:ToggleSidebar()
     
     if self.sidebarCollapsed then
         targetSize = UDim2.new(0, 12, 1, 0)
-        buttonText = "▶"
+        buttonText = "›"  -- 展开符号
         editorPos = UDim2.new(0, 16, 0, 0)
         editorSize = UDim2.new(1, -16, 1, 0)
     else
         targetSize = UDim2.new(0, 100, 1, 0)
-        buttonText = "◀"
+        buttonText = "‹"  -- 折叠符号
         editorPos = UDim2.new(0, 104, 0, 0)
         editorSize = UDim2.new(1, -104, 1, 0)
     end
