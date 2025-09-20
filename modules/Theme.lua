@@ -5,18 +5,18 @@
 local Theme = {}
 
 Theme.Colors = {
-    Background = Color3.fromRGB(20, 20, 25),
-    Secondary = Color3.fromRGB(28, 28, 35),
-    Tertiary = Color3.fromRGB(35, 35, 42),
-    Accent = Color3.fromRGB(88, 101, 242),
-    Success = Color3.fromRGB(87, 202, 134),
-    Error = Color3.fromRGB(237, 66, 69),
-    Warning = Color3.fromRGB(255, 163, 26),
-    Text = Color3.fromRGB(220, 221, 222),
-    TextDim = Color3.fromRGB(163, 166, 168),
-    Border = Color3.fromRGB(47, 49, 54),
+    Background = Color3.fromRGB(24, 24, 28),
+    Secondary = Color3.fromRGB(30, 30, 35),
+    Tertiary = Color3.fromRGB(38, 38, 44),
+    Accent = Color3.fromRGB(92, 106, 234),
+    Success = Color3.fromRGB(98, 214, 136),
+    Error = Color3.fromRGB(234, 92, 92),
+    Warning = Color3.fromRGB(234, 182, 92),
+    Text = Color3.fromRGB(225, 225, 230),
+    TextDim = Color3.fromRGB(140, 140, 150),
     LineNumber = Color3.fromRGB(90, 90, 100),
-    -- 语法高亮
+    Border = Color3.fromRGB(50, 50, 56),
+    -- 语法高亮颜色
     Keyword = Color3.fromRGB(198, 120, 221),
     String = Color3.fromRGB(152, 195, 121),
     Comment = Color3.fromRGB(92, 99, 112),
