@@ -40,7 +40,7 @@ function UI.new(theme, utils, config)
         collapseBtn.Size = UDim2.new(0, 16, 1, -4)
         collapseBtn.Position = UDim2.new(1, -18, 0, 2)
         collapseBtn.BackgroundColor3 = self.theme.Colors.Background
-        collapseBtn.Text = "‹"  -- 使用更好看的符号
+        collapseBtn.Text = "‹"
         collapseBtn.TextColor3 = self.theme.Colors.Text
         collapseBtn.TextSize = 12
         collapseBtn.Font = Enum.Font.SourceSansBold
@@ -67,8 +67,8 @@ function UI.new(theme, utils, config)
         expandBtn.TextSize = 12
         expandBtn.Font = Enum.Font.SourceSansBold
         expandBtn.BorderSizePixel = 0
-        expandBtn.Visible = false  -- 初始时隐藏
-        expandBtn.Parent = container  -- 注意：父级是container，不是sidePanel
+        expandBtn.Visible = false
+        expandBtn.Parent = container
         
         self.theme:CreateCorner(6).Parent = expandBtn
         self.theme:AddHoverEffect(expandBtn, self.theme.Colors.Secondary)
@@ -76,7 +76,7 @@ function UI.new(theme, utils, config)
         return {
             container = container,
             collapseBtn = collapseBtn,
-            expandBtn = expandBtn,  -- 新增展开按钮
+            expandBtn = expandBtn,
             sidePanel = sidePanel,
             tabContainer = tabContainer,
             contentContainer = contentContainer
@@ -86,12 +86,12 @@ function UI.new(theme, utils, config)
     -- 创建Tab按钮（为折叠按钮留出空间）
     function self:CreateTabButton(parent, text, position, active)
         local tab = Instance.new("TextButton")
-        tab.Size = UDim2.new(0.5, -10, 1, -4)  -- 减少宽度为折叠按钮留空间
+        tab.Size = UDim2.new(0.33, -6, 1, -4)  -- 三个tab按钮
         tab.Position = position
         tab.BackgroundColor3 = active and self.theme.Colors.Accent or self.theme.Colors.Background
         tab.Text = text
         tab.TextColor3 = self.theme.Colors.Text
-        tab.TextSize = 9
+        tab.TextSize = 8  -- 稍微减小字体
         tab.Font = Enum.Font.SourceSansSemibold
         tab.BorderSizePixel = 0
         tab.Parent = parent
@@ -193,6 +193,59 @@ function UI.new(theme, utils, config)
         }
     end
     
+    -- 创建RemoteSpy面板（新增）
+    function self:CreateRemoteSpyPanel(parent)
+        local panel = Instance.new("Frame")
+        panel.Size = UDim2.new(1, 0, 1, 0)
+        panel.BackgroundTransparency = 1
+        panel.Visible = false
+        panel.Parent = parent
+        
+        -- 标题栏
+        local header = self:CreatePanelHeader(panel, "远程监控")
+        
+        -- 开关按钮
+        local toggleBtn = Instance.new("TextButton")
+        toggleBtn.Size = UDim2.new(0, 30, 0, 14)
+        toggleBtn.Position = UDim2.new(1, -32, 0.5, -7)
+        toggleBtn.BackgroundColor3 = self.theme.Colors.Success
+        toggleBtn.Text = "开启"
+        toggleBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+        toggleBtn.TextSize = 8
+        toggleBtn.Font = Enum.Font.SourceSansSemibold
+        toggleBtn.BorderSizePixel = 0
+        toggleBtn.Parent = header
+        
+        self.theme:CreateCorner(3).Parent = toggleBtn
+        
+        -- 日志滚动框
+        local logScroll = self:CreateScrollingFrame(panel, UDim2.new(1, -4, 1, -42), UDim2.new(0, 2, 0, 22))
+        
+        -- 清除按钮
+        local clearBtn = Instance.new("TextButton")
+        clearBtn.Size = UDim2.new(1, -4, 0, 16)
+        clearBtn.Position = UDim2.new(0, 2, 1, -18)
+        clearBtn.BackgroundColor3 = self.theme.Colors.Error
+        clearBtn.Text = "清除"
+        clearBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+        clearBtn.TextSize = 9
+        clearBtn.Font = Enum.Font.SourceSansSemibold
+        clearBtn.BorderSizePixel = 0
+        clearBtn.Parent = panel
+        
+        self.theme:CreateCorner(4).Parent = clearBtn
+        self.theme:AddHoverEffect(clearBtn, self.theme.Colors.Error)
+        
+        return {
+            panel = panel,
+            header = header,
+            toggleBtn = toggleBtn,
+            logScroll = logScroll.frame,
+            logLayout = logScroll.layout,
+            clearBtn = clearBtn
+        }
+    end
+    
     -- 创建HttpSpy详细界面
     function self:CreateHttpSpyInterface(parent)
         local interface = Instance.new("Frame")
@@ -245,6 +298,113 @@ function UI.new(theme, utils, config)
             toolBar = toolBar,
             statusLabel = statusLabel,
             detailContainer = detailContainer,
+            detailScroll = detailScroll.frame,
+            detailLayout = detailScroll.layout
+        }
+    end
+    
+    -- 创建RemoteSpy详细界面（新增）
+    function self:CreateRemoteSpyInterface(parent)
+        local interface = Instance.new("Frame")
+        interface.Size = UDim2.new(1, 0, 1, 0)
+        interface.BackgroundTransparency = 1
+        interface.Visible = false
+        interface.Parent = parent
+        
+        -- 工具栏
+        local toolBar = self:CreateToolBar(interface)
+        
+        local title = Instance.new("TextLabel")
+        title.Size = UDim2.new(0.5, 0, 1, 0)
+        title.Position = UDim2.new(0, 8, 0, 0)
+        title.BackgroundTransparency = 1
+        title.Text = "远程调用监控"
+        title.TextColor3 = self.theme.Colors.Text
+        title.TextSize = 11
+        title.Font = Enum.Font.SourceSansSemibold
+        title.TextXAlignment = Enum.TextXAlignment.Left
+        title.Parent = toolBar
+        
+        -- 状态标签
+        local statusLabel = Instance.new("TextLabel")
+        statusLabel.Size = UDim2.new(0, 80, 1, 0)
+        statusLabel.Position = UDim2.new(1, -80, 0, 0)
+        statusLabel.BackgroundTransparency = 1
+        statusLabel.Text = "未启动"
+        statusLabel.TextColor3 = self.theme.Colors.TextDim
+        statusLabel.TextSize = 10
+        statusLabel.Font = Enum.Font.SourceSans
+        statusLabel.TextXAlignment = Enum.TextXAlignment.Right
+        statusLabel.Parent = toolBar
+        
+        -- 主容器
+        local mainContainer = Instance.new("Frame")
+        mainContainer.Size = UDim2.new(1, 0, 1, -24)
+        mainContainer.Position = UDim2.new(0, 0, 0, 24)
+        mainContainer.BackgroundTransparency = 1
+        mainContainer.Parent = interface
+        
+        -- 代码框容器
+        local codeContainer = Instance.new("Frame")
+        codeContainer.Size = UDim2.new(1, 0, 0.6, 0)
+        codeContainer.BackgroundColor3 = self.theme.Colors.Secondary
+        codeContainer.BorderSizePixel = 0
+        codeContainer.Parent = mainContainer
+        
+        self.theme:CreateCorner(6).Parent = codeContainer
+        
+        -- 代码框
+        local codeBox = Instance.new("TextBox")
+        codeBox.Size = UDim2.new(1, -8, 1, -8)
+        codeBox.Position = UDim2.new(0, 4, 0, 4)
+        codeBox.BackgroundTransparency = 1
+        codeBox.Text = "-- 选择一个远程调用查看代码"
+        codeBox.TextColor3 = self.theme.Colors.Text
+        codeBox.TextSize = 10
+        codeBox.Font = Enum.Font.Code
+        codeBox.TextXAlignment = Enum.TextXAlignment.Left
+        codeBox.TextYAlignment = Enum.TextYAlignment.Top
+        codeBox.ClearTextOnFocus = false
+        codeBox.MultiLine = true
+        codeBox.TextEditable = false
+        codeBox.Parent = codeContainer
+        
+        -- 按钮容器
+        local buttonContainer = Instance.new("Frame")
+        buttonContainer.Size = UDim2.new(1, 0, 0, 30)
+        buttonContainer.Position = UDim2.new(0, 0, 0.6, 5)
+        buttonContainer.BackgroundTransparency = 1
+        buttonContainer.Parent = mainContainer
+        
+        -- 创建按钮
+        local copyBtn = self:CreateActionButton(buttonContainer, "复制", self.theme.Colors.Success, UDim2.new(0, 0, 0, 0))
+        local runBtn = self:CreateActionButton(buttonContainer, "运行", self.theme.Colors.Warning, UDim2.new(0, 60, 0, 0))
+        local excludeBtn = self:CreateActionButton(buttonContainer, "排除", self.theme.Colors.Tertiary, UDim2.new(0, 120, 0, 0))
+        local blockBtn = self:CreateActionButton(buttonContainer, "阻止", self.theme.Colors.Error, UDim2.new(0, 180, 0, 0))
+        
+        -- 详细信息容器
+        local detailContainer = Instance.new("Frame")
+        detailContainer.Size = UDim2.new(1, 0, 0.35, -35)
+        detailContainer.Position = UDim2.new(0, 0, 0.65, 35)
+        detailContainer.BackgroundColor3 = self.theme.Colors.Secondary
+        detailContainer.BorderSizePixel = 0
+        detailContainer.Parent = mainContainer
+        
+        self.theme:CreateCorner(6).Parent = detailContainer
+        
+        -- 详细信息滚动框
+        local detailScroll = self:CreateScrollingFrame(detailContainer, UDim2.new(1, -8, 1, -8), UDim2.new(0, 4, 0, 4))
+        
+        return {
+            interface = interface,
+            toolBar = toolBar,
+            statusLabel = statusLabel,
+            mainContainer = mainContainer,
+            codeBox = codeBox,
+            copyBtn = copyBtn,
+            runBtn = runBtn,
+            excludeBtn = excludeBtn,
+            blockBtn = blockBtn,
             detailScroll = detailScroll.frame,
             detailLayout = detailScroll.layout
         }
@@ -333,12 +493,12 @@ function UI.new(theme, utils, config)
     -- 辅助方法：创建动作按钮
     function self:CreateActionButton(parent, text, color, position)
         local button = Instance.new("TextButton")
-        button.Size = UDim2.new(0, 55, 1, 0)
+        button.Size = UDim2.new(0, 55, 0, 25)
         button.Position = position
         button.BackgroundColor3 = color
         button.Text = text
         button.TextColor3 = Color3.fromRGB(255, 255, 255)
-        button.TextSize = 11
+        button.TextSize = 10
         button.Font = Enum.Font.SourceSansSemibold
         button.BorderSizePixel = 0
         button.Parent = parent
