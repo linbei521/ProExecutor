@@ -57,9 +57,26 @@ function UI.new(theme, utils, config)
         contentContainer.BackgroundTransparency = 1
         contentContainer.Parent = sidePanel
         
+        -- 折叠状态时的展开按钮（独立于侧边栏）
+        local expandBtn = Instance.new("TextButton")
+        expandBtn.Size = UDim2.new(0, 12, 0, 60)
+        expandBtn.Position = UDim2.new(0, 0, 0.5, -30)
+        expandBtn.BackgroundColor3 = self.theme.Colors.Secondary
+        expandBtn.Text = "›"
+        expandBtn.TextColor3 = self.theme.Colors.Text
+        expandBtn.TextSize = 12
+        expandBtn.Font = Enum.Font.SourceSansBold
+        expandBtn.BorderSizePixel = 0
+        expandBtn.Visible = false  -- 初始时隐藏
+        expandBtn.Parent = container  -- 注意：父级是container，不是sidePanel
+        
+        self.theme:CreateCorner(6).Parent = expandBtn
+        self.theme:AddHoverEffect(expandBtn, self.theme.Colors.Secondary)
+        
         return {
             container = container,
             collapseBtn = collapseBtn,
+            expandBtn = expandBtn,  -- 新增展开按钮
             sidePanel = sidePanel,
             tabContainer = tabContainer,
             contentContainer = contentContainer
