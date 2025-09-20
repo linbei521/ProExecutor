@@ -9,6 +9,7 @@ local AutoComplete = modules and modules.AutoComplete
 local CodeExecutor = modules and modules.CodeExecutor
 local UI = modules and modules.UI
 local HttpSpy = modules and modules.HttpSpy
+local RemoteSpy = modules and modules.RemoteSpy  -- 新增
 
 -- 如果关键模块加载失败，显示错误
 if not Theme or not Storage or not Utils then
@@ -51,6 +52,7 @@ function ProExecutor.new()
     self.outputManager = OutputManager.new(self.theme, self.utils)
     self.codeExecutor = CodeExecutor.new(self.outputManager)
     self.httpSpy = HttpSpy.new(self.theme, self.utils, self.outputManager)
+    self.remoteSpy = RemoteSpy.new(self.theme, self.utils, self.outputManager)  -- 新增
 
     -- 状态变量
     self.minimized = false
@@ -209,14 +211,15 @@ function ProExecutor:CreateSidePanel()
     local sidePanelData = self.ui:CreateCollapsibleSidePanel(self.mainContainer)
     self.sidePanelContainer = sidePanelData.container
     self.collapseBtn = sidePanelData.collapseBtn
-    self.expandBtn = sidePanelData.expandBtn  -- 新增
+    self.expandBtn = sidePanelData.expandBtn
     self.sidePanel = sidePanelData.sidePanel
     self.tabContainer = sidePanelData.tabContainer
     self.tabContentContainer = sidePanelData.contentContainer
     
-    -- 创建Tab按钮
+    -- 创建Tab按钮（三个tab）
     self.scriptTab = self.ui:CreateTabButton(self.tabContainer, "脚本", UDim2.new(0, 2, 0, 2), true)
-    self.httpSpyTab = self.ui:CreateTabButton(self.tabContainer, "监控", UDim2.new(0.5, -8, 0, 2), false)
+    self.httpSpyTab = self.ui:CreateTabButton(self.tabContainer, "HTTP", UDim2.new(0.33, -2, 0, 2), false)
+    self.remoteSpyTab = self.ui:CreateTabButton(self.tabContainer, "远程", UDim2.new(0.66, -4, 0, 2), false)  -- 新增
     
     -- 创建脚本列表面板
     local scriptPanelData = self.ui:CreateScriptListPanel(self.tabContentContainer)
@@ -228,6 +231,10 @@ function ProExecutor:CreateSidePanel()
     -- 创建HttpSpy面板
     self.httpSpyPanelData = self.ui:CreateHttpSpyPanel(self.tabContentContainer)
     self.httpSpyPanel = self.httpSpyPanelData.panel
+    
+    -- 创建RemoteSpy面板（新增）
+    self.remoteSpyPanelData = self.ui:CreateRemoteSpyPanel(self.tabContentContainer)
+    self.remoteSpyPanel = self.remoteSpyPanelData.panel
     
     -- 初始化脚本管理器
     self.scriptManager = ScriptManager.new(self.theme, self.storage, self.utils, self.outputManager)
@@ -258,6 +265,10 @@ function ProExecutor:CreateEditorArea()
     local httpSpyInterfaceData = self.ui:CreateHttpSpyInterface(self.editorContentContainer)
     self.httpSpyInterface = httpSpyInterfaceData.interface
     
+    -- 创建RemoteSpy详细界面（新增）
+    local remoteSpyInterfaceData = self.ui:CreateRemoteSpyInterface(self.editorContentContainer)
+    self.remoteSpyInterface = remoteSpyInterfaceData.interface
+    
     -- 设置HttpSpy
     self.httpSpy:Setup({
         toggleBtn = self.httpSpyPanelData.toggleBtn,
@@ -267,6 +278,22 @@ function ProExecutor:CreateEditorArea()
         detailScroll = httpSpyInterfaceData.detailScroll,
         detailLayout = httpSpyInterfaceData.detailLayout,
         clearBtn = self.httpSpyPanelData.clearBtn
+    })
+    
+    -- 设置RemoteSpy（新增）
+    self.remoteSpy:Setup({
+        toggleBtn = self.remoteSpyPanelData.toggleBtn,
+        statusLabel = remoteSpyInterfaceData.statusLabel,
+        logScroll = self.remoteSpyPanelData.logScroll,
+        logLayout = self.remoteSpyPanelData.logLayout,
+        detailScroll = remoteSpyInterfaceData.detailScroll,
+        detailLayout = remoteSpyInterfaceData.detailLayout,
+        clearBtn = self.remoteSpyPanelData.clearBtn,
+        codeBox = remoteSpyInterfaceData.codeBox,
+        copyBtn = remoteSpyInterfaceData.copyBtn,
+        runBtn = remoteSpyInterfaceData.runBtn,
+        blockBtn = remoteSpyInterfaceData.blockBtn,
+        excludeBtn = remoteSpyInterfaceData.excludeBtn
     })
 end
 
@@ -549,14 +576,17 @@ function ProExecutor:SwitchTab(tabName)
     -- 更新tab按钮状态
     self.scriptTab.BackgroundColor3 = (tabName == "script") and self.theme.Colors.Accent or self.theme.Colors.Background
     self.httpSpyTab.BackgroundColor3 = (tabName == "httpspy") and self.theme.Colors.Accent or self.theme.Colors.Background
+    self.remoteSpyTab.BackgroundColor3 = (tabName == "remotespy") and self.theme.Colors.Accent or self.theme.Colors.Background  -- 新增
 
     -- 切换侧边栏面板
     self.scriptPanel.Visible = (tabName == "script")
     self.httpSpyPanel.Visible = (tabName == "httpspy")
+    self.remoteSpyPanel.Visible = (tabName == "remotespy")  -- 新增
 
     -- 切换右侧内容区域
     self.codeEditorInterface.Visible = (tabName == "script")
     self.httpSpyInterface.Visible = (tabName == "httpspy")
+    self.remoteSpyInterface.Visible = (tabName == "remotespy")  -- 新增
 end
 
 function ProExecutor:SetupEventHandlers()
@@ -629,7 +659,7 @@ function ProExecutor:SetupEventHandlers()
         self:ToggleSidebar()
     end)
 
-    -- 展开按钮控制（新增）
+    -- 展开按钮控制
     self.expandBtn.MouseButton1Click:Connect(function()
         self:ToggleSidebar()
     end)
@@ -643,6 +673,10 @@ function ProExecutor:SetupEventHandlers()
         self:SwitchTab("httpspy")
     end)
 
+    self.remoteSpyTab.MouseButton1Click:Connect(function()  -- 新增
+        self:SwitchTab("remotespy")
+    end)
+
     -- HttpSpy控制
     self.httpSpyPanelData.toggleBtn.MouseButton1Click:Connect(function()
         self.httpSpy:Toggle()
@@ -651,6 +685,41 @@ function ProExecutor:SetupEventHandlers()
     self.httpSpyPanelData.clearBtn.MouseButton1Click:Connect(function()
         self.httpSpy:Clear()
     end)
+
+    -- RemoteSpy控制（新增）
+    self.remoteSpyPanelData.toggleBtn.MouseButton1Click:Connect(function()
+        self.remoteSpy:Toggle()
+    end)
+
+    self.remoteSpyPanelData.clearBtn.MouseButton1Click:Connect(function()
+        self.remoteSpy:Clear()
+    end)
+    
+    -- RemoteSpy按钮事件（新增）
+    local remoteSpyInterface = self.ui.remoteSpyInterfaceData or {}
+    if remoteSpyInterface.copyBtn then
+        remoteSpyInterface.copyBtn.MouseButton1Click:Connect(function()
+            self.remoteSpy:CopyCode()
+        end)
+    end
+    
+    if remoteSpyInterface.runBtn then
+        remoteSpyInterface.runBtn.MouseButton1Click:Connect(function()
+            self.remoteSpy:RunCode()
+        end)
+    end
+    
+    if remoteSpyInterface.excludeBtn then
+        remoteSpyInterface.excludeBtn.MouseButton1Click:Connect(function()
+            self.remoteSpy:ExcludeRemote()
+        end)
+    end
+    
+    if remoteSpyInterface.blockBtn then
+        remoteSpyInterface.blockBtn.MouseButton1Click:Connect(function()
+            self.remoteSpy:BlockRemote()
+        end)
+    end
 
     -- 窗口控制
     self.minimizeBtn.MouseButton1Click:Connect(function()
@@ -826,6 +895,11 @@ function ProExecutor:Destroy()
     -- 清理HttpSpy
     if self.httpSpy then
         self.httpSpy:Destroy()
+    end
+    
+    -- 清理RemoteSpy（新增）
+    if self.remoteSpy then
+        self.remoteSpy:Destroy()
     end
     
     if self.screenGui then
