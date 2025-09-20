@@ -151,7 +151,7 @@ function ProExecutor:CreateTopBar()
     title.Size = UDim2.new(0.4, 0, 1, 0)
     title.Position = UDim2.new(0, 10, 0, 0)
     title.BackgroundTransparency = 1
-    title.Text = "专业脚本执行器"
+    title.Text = "镜花水月"
     title.TextColor3 = self.theme.Colors.Text
     title.TextSize = 13
     title.Font = Enum.Font.SourceSansSemibold
