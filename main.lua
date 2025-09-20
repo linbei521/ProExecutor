@@ -209,6 +209,7 @@ function ProExecutor:CreateSidePanel()
     local sidePanelData = self.ui:CreateCollapsibleSidePanel(self.mainContainer)
     self.sidePanelContainer = sidePanelData.container
     self.collapseBtn = sidePanelData.collapseBtn
+    self.expandBtn = sidePanelData.expandBtn  -- 新增
     self.sidePanel = sidePanelData.sidePanel
     self.tabContainer = sidePanelData.tabContainer
     self.tabContentContainer = sidePanelData.contentContainer
@@ -515,16 +516,14 @@ end
 function ProExecutor:ToggleSidebar()
     self.sidebarCollapsed = not self.sidebarCollapsed
     
-    local targetSize, buttonText, editorPos, editorSize
+    local targetSize, editorPos, editorSize
     
     if self.sidebarCollapsed then
         targetSize = UDim2.new(0, 12, 1, 0)
-        buttonText = "›"  -- 展开符号
         editorPos = UDim2.new(0, 16, 0, 0)
         editorSize = UDim2.new(1, -16, 1, 0)
     else
         targetSize = UDim2.new(0, 100, 1, 0)
-        buttonText = "‹"  -- 折叠符号
         editorPos = UDim2.new(0, 104, 0, 0)
         editorSize = UDim2.new(1, -104, 1, 0)
     end
@@ -539,8 +538,9 @@ function ProExecutor:ToggleSidebar()
         self.editorFrame.Position = editorPos
     end
 
-    self.collapseBtn.Text = buttonText
+    -- 切换按钮显示
     self.sidePanel.Visible = not self.sidebarCollapsed
+    self.expandBtn.Visible = self.sidebarCollapsed
 end
 
 function ProExecutor:SwitchTab(tabName)
@@ -626,6 +626,11 @@ function ProExecutor:SetupEventHandlers()
 
     -- 侧边栏控制
     self.collapseBtn.MouseButton1Click:Connect(function()
+        self:ToggleSidebar()
+    end)
+
+    -- 展开按钮控制（新增）
+    self.expandBtn.MouseButton1Click:Connect(function()
         self:ToggleSidebar()
     end)
 
