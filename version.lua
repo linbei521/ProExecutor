@@ -13,14 +13,23 @@ return {
         "在线更新",
         "脚本管理",
         "语法高亮",
-        "导入导出"
+        "导入导出",
+        "自动补全",
+        "快捷键支持"
     },
     changelog = {
         ["1.0.0"] = {
             "首次发布GitHub版",
             "模块化重构",
             "移动端适配",
-            "在线加载系统"
+            "在线加载系统",
+            "修复配置错误",
+            "增强错误处理"
         }
+    },
+    performance = {
+        optimizationLevel = "high",
+        targetFPS = 60,
+        memoryEfficiency = "optimized"
     }
 }
