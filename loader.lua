@@ -15,7 +15,8 @@ local MODULES = {
     "ScriptManager",
     "AutoComplete",
     "CodeExecutor",
-    "UI"
+    "UI",
+    "HttpSpy"  -- 新增
 }
 
 -- 检查执行环境
