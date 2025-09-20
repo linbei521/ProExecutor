@@ -17,29 +17,51 @@ function UI.new(theme, utils, config)
         container.BackgroundTransparency = 1
         container.Parent = parent
         
+        -- 侧边栏主体
+        local sidePanel = Instance.new("Frame")
+        sidePanel.Size = UDim2.new(1, -12, 1, 0)
+        sidePanel.BackgroundColor3 = self.theme.Colors.Secondary
+        sidePanel.BorderSizePixel = 0
+        sidePanel.ClipsDescendants = true  -- 防止内容溢出
+        sidePanel.Parent = container
+        
+        self.theme:CreateCorner(6).Parent = sidePanel
+        
+        -- 折叠按钮容器（独立于侧边栏，确保不被裁剪）
+        local collapseBtnContainer = Instance.new("Frame")
+        collapseBtnContainer.Size = UDim2.new(0, 12, 1, 0)
+        collapseBtnContainer.Position = UDim2.new(1, -12, 0, 0)
+        collapseBtnContainer.BackgroundTransparency = 1
+        collapseBtnContainer.ZIndex = 10  -- 高层级
+        collapseBtnContainer.Parent = container
+        
         -- 折叠按钮
         local collapseBtn = Instance.new("TextButton")
-        collapseBtn.Size = UDim2.new(0, 12, 0, 60)
-        collapseBtn.Position = UDim2.new(1, 0, 0.5, -30)
+        collapseBtn.Size = UDim2.new(1, 0, 0, 60)
+        collapseBtn.Position = UDim2.new(0, 0, 0.5, -30)
         collapseBtn.BackgroundColor3 = self.theme.Colors.Secondary
         collapseBtn.Text = "◀"
         collapseBtn.TextColor3 = self.theme.Colors.TextDim
         collapseBtn.TextSize = 10
         collapseBtn.Font = Enum.Font.SourceSansBold
         collapseBtn.BorderSizePixel = 0
-        collapseBtn.ZIndex = 5
-        collapseBtn.Parent = container
+        collapseBtn.ZIndex = 10  -- 确保在最上层
+        collapseBtn.Parent = collapseBtnContainer
         
         self.theme:CreateCorner(6).Parent = collapseBtn
         
-        -- 侧边栏主体
-        local sidePanel = Instance.new("Frame")
-        sidePanel.Size = UDim2.new(1, -12, 1, 0)
-        sidePanel.BackgroundColor3 = self.theme.Colors.Secondary
-        sidePanel.BorderSizePixel = 0
-        sidePanel.Parent = container
+        -- 添加阴影效果使按钮更明显
+        local shadow = Instance.new("Frame")
+        shadow.Size = UDim2.new(1, 4, 1, 4)
+        shadow.Position = UDim2.new(0, -2, 0, -2)
+        shadow.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+        shadow.BackgroundTransparency = 0.7
+        shadow.ZIndex = 9
+        shadow.Parent = collapseBtn
         
-        self.theme:CreateCorner(6).Parent = sidePanel
+        local shadowCorner = Instance.new("UICorner")
+        shadowCorner.CornerRadius = UDim.new(0, 6)
+        shadowCorner.Parent = shadow
         
         -- Tab容器
         local tabContainer = Instance.new("Frame")
