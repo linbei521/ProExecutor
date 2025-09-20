@@ -1,5 +1,5 @@
 --[[
-    脚本管理模块 - 增强版
+    脚本管理模块
 ]]
 
 local ScriptManager = {}
