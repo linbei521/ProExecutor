@@ -911,12 +911,37 @@ if success then
     _G.ProExecutor = app
     print("ProExecutor GitHub版启动成功! 🚀")
     
-    -- 清理函数
-    game:BindToClose(function()
-        if app and app.Destroy then
-            app:Destroy()
-        end
-    end)
+    -- 客户端清理函数
+local function setupCleanup()
+    -- 在客户端使用Players服务来检测玩家离开
+    local Players = game:GetService("Players")
+    local player = Players.LocalPlayer
+    
+    if player then
+        -- 当玩家离开游戏时清理
+        player.AncestryChanged:Connect(function()
+            if not player.Parent then
+                if app and app.Destroy then
+                    app:Destroy()
+                end
+            end
+        end)
+    end
+    
+    -- 检测GUI被删除时的清理
+    if app and app.screenGui then
+        app.screenGui.AncestryChanged:Connect(function()
+            if not app.screenGui.Parent then
+                if app.Destroy then
+                    app:Destroy()
+                end
+            end
+        end)
+    end
+end
+
+-- 设置清理
+pcall(setupCleanup)
 else
     error("ProExecutor 启动失败: " .. tostring(app))
 end
