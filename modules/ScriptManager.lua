@@ -1,5 +1,5 @@
 --[[
-    脚本管理模块
+    脚本管理模块 - 增强版
 ]]
 
 local ScriptManager = {}
@@ -11,12 +11,13 @@ function ScriptManager.new(theme, storage, utils, outputManager)
     self.utils = utils
     self.outputManager = outputManager
     self.savedData = storage:Load()
+    self.currentScript = nil
     self.scriptItems = {}
     
-    function self:Setup(scriptsList, scriptsLayout)
-        self.scriptsList = scriptsList
-        self.scriptsLayout = scriptsLayout
-        self:LoadSavedScripts()
+    function self:Setup(scriptListScroll, scriptListLayout, currentScriptLabel)
+        self.scriptListScroll = scriptListScroll
+        self.scriptListLayout = scriptListLayout
+        self.currentScriptLabel = currentScriptLabel
     end
     
     function self:LoadSavedScripts()
@@ -26,60 +27,43 @@ function ScriptManager.new(theme, storage, utils, outputManager)
     end
     
     function self:CreateScriptItem(name, code)
-        if not self.scriptsList then return end
+        if not self.scriptListScroll then return end
         
         local item = Instance.new("TextButton")
-        item.Size = UDim2.new(1, 0, 0, 40)
+        item.Name = name
+        item.Size = UDim2.new(1, 0, 0, 22)
         item.BackgroundColor3 = self.theme.Colors.Tertiary
         item.Text = ""
         item.BorderSizePixel = 0
-        item.Parent = self.scriptsList
+        item.Parent = self.scriptListScroll
         
-        self.theme:CreateCorner(6).Parent = item
+        self.theme:CreateCorner(4).Parent = item
         
-        local nameLabel = Instance.new("TextLabel")
-        nameLabel.Size = UDim2.new(1, -60, 1, 0)
-        nameLabel.Position = UDim2.new(0, 10, 0, 0)
-        nameLabel.BackgroundTransparency = 1
-        nameLabel.Text = name
-        nameLabel.TextColor3 = self.theme.Colors.Text
-        nameLabel.TextSize = 12
-        nameLabel.Font = Enum.Font.SourceSansSemibold
-        nameLabel.TextXAlignment = Enum.TextXAlignment.Left
-        nameLabel.TextTruncate = Enum.TextTruncate.AtEnd
-        nameLabel.Parent = item
-        
-        local loadBtn = Instance.new("TextButton")
-        loadBtn.Size = UDim2.new(0, 25, 0, 25)
-        loadBtn.Position = UDim2.new(1, -50, 0.5, -12.5)
-        loadBtn.BackgroundColor3 = self.theme.Colors.Success
-        loadBtn.Text = "📂"
-        loadBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-        loadBtn.TextSize = 12
-        loadBtn.Font = Enum.Font.SourceSansBold
-        loadBtn.BorderSizePixel = 0
-        loadBtn.Parent = item
-        
-        self.theme:CreateCorner(4).Parent = loadBtn
+        local itemLabel = Instance.new("TextLabel")
+        itemLabel.Size = UDim2.new(1, -18, 1, 0)
+        itemLabel.Position = UDim2.new(0, 4, 0, 0)
+        itemLabel.BackgroundTransparency = 1
+        itemLabel.Text = name
+        itemLabel.TextColor3 = self.theme.Colors.Text
+        itemLabel.TextSize = 10
+        itemLabel.Font = Enum.Font.SourceSans
+        itemLabel.TextXAlignment = Enum.TextXAlignment.Left
+        itemLabel.TextTruncate = Enum.TextTruncate.AtEnd
+        itemLabel.Parent = item
         
         local deleteBtn = Instance.new("TextButton")
-        deleteBtn.Size = UDim2.new(0, 25, 0, 25)
-        deleteBtn.Position = UDim2.new(1, -20, 0.5, -12.5)
-        deleteBtn.BackgroundColor3 = self.theme.Colors.Error
-        deleteBtn.Text = "🗑️"
-        deleteBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+        deleteBtn.Size = UDim2.new(0, 14, 0, 14)
+        deleteBtn.Position = UDim2.new(1, -16, 0.5, -7)
+        deleteBtn.BackgroundTransparency = 1
+        deleteBtn.Text = "×"
+        deleteBtn.TextColor3 = self.theme.Colors.Error
         deleteBtn.TextSize = 12
         deleteBtn.Font = Enum.Font.SourceSansBold
-        deleteBtn.BorderSizePixel = 0
         deleteBtn.Parent = item
         
-        self.theme:CreateCorner(4).Parent = deleteBtn
-        
-        loadBtn.MouseButton1Click:Connect(function()
-            if self.onLoadScript then
-                self.onLoadScript(code)
-            end
-            self.outputManager:LogSuccess("📂 已加载: " .. name)
+        item.MouseButton1Click:Connect(function()
+            self:LoadScript(name, code)
+            self:SetActiveItem(item)
         end)
         
         deleteBtn.MouseButton1Click:Connect(function()
@@ -88,6 +72,29 @@ function ScriptManager.new(theme, storage, utils, outputManager)
         
         self.scriptItems[name] = item
         self:UpdateCanvasSize()
+        
+        return item
+    end
+    
+    function self:LoadScript(name, code)
+        self.currentScript = {name = name, code = code}
+        
+        if self.currentScriptLabel then
+            self.currentScriptLabel.Text = name
+        end
+        
+        if self.onLoadScript then
+            self.onLoadScript(code)
+        end
+        
+        self.outputManager:LogSuccess("已加载: " .. name)
+    end
+    
+    function self:SetActiveItem(activeItem)
+        for _, item in pairs(self.scriptItems) do
+            item.BackgroundColor3 = self.theme.Colors.Tertiary
+        end
+        activeItem.BackgroundColor3 = self.theme.Colors.Accent
     end
     
     function self:DeleteScript(name, item)
@@ -101,7 +108,7 @@ function ScriptManager.new(theme, storage, utils, outputManager)
         
         self.scriptItems[name] = nil
         item:Destroy()
-        self.outputManager:LogError("🗑️ 已删除: " .. name)
+        self.outputManager:LogError("已删除: " .. name)
         self:UpdateCanvasSize()
     end
     
@@ -112,6 +119,7 @@ function ScriptManager.new(theme, storage, utils, outputManager)
             return false
         end
         
+        -- 检查重名
         for _, script in ipairs(self.savedData.Scripts) do
             if script.name == name then
                 self.outputManager:LogError("名称已存在！")
@@ -122,7 +130,13 @@ function ScriptManager.new(theme, storage, utils, outputManager)
         table.insert(self.savedData.Scripts, {name = name, code = code})
         self:SaveData()
         self:CreateScriptItem(name, code)
-        self.outputManager:LogSuccess("💾 已保存: " .. name)
+        self.currentScript = {name = name, code = code}
+        
+        if self.currentScriptLabel then
+            self.currentScriptLabel.Text = name
+        end
+        
+        self.outputManager:LogSuccess("已保存: " .. name)
         return true
     end
     
@@ -141,7 +155,7 @@ function ScriptManager.new(theme, storage, utils, outputManager)
         
         local success, err = self.storage:ExportToClipboard(self.savedData.Scripts)
         if success then
-            self.outputManager:LogSuccess("📤 已导出 " .. #self.savedData.Scripts .. " 个脚本")
+            self.outputManager:LogSuccess("已导出 " .. #self.savedData.Scripts .. " 个脚本到剪贴板")
         else
             self.outputManager:LogError("导出失败: " .. (err or "剪贴板不支持"))
         end
@@ -175,39 +189,37 @@ function ScriptManager.new(theme, storage, utils, outputManager)
         
         if imported > 0 then
             self:SaveData()
-            self.outputManager:LogSuccess("📥 已导入 " .. imported .. " 个脚本")
+            self.outputManager:LogSuccess("已导入 " .. imported .. " 个脚本")
         else
             self.outputManager:LogWarning("没有新脚本导入")
         end
     end
     
-    function self:DeleteAllScripts()
-        if #self.savedData.Scripts == 0 then
-            self.outputManager:LogWarning("没有脚本可删除")
-            return
+    function self:NewScript()
+        self.currentScript = nil
+        if self.currentScriptLabel then
+            self.currentScriptLabel.Text = "未命名"
         end
         
-        local count = #self.savedData.Scripts
-        self.savedData.Scripts = {}
-        self:SaveData()
-        
-        for _, item in pairs(self.scriptItems) do
-            item:Destroy()
+        if self.onNewScript then
+            self.onNewScript()
         end
-        self.scriptItems = {}
         
-        self.outputManager:LogError("🗑️ 已删除 " .. count .. " 个脚本")
-        self:UpdateCanvasSize()
+        self.outputManager:LogSuccess("新建脚本")
     end
     
     function self:UpdateCanvasSize()
-        if self.scriptsLayout then
-            self.scriptsList.CanvasSize = UDim2.new(0, 0, 0, self.scriptsLayout.AbsoluteContentSize.Y)
+        if self.scriptListScroll and self.scriptListLayout then
+            self.scriptListScroll.CanvasSize = UDim2.new(0, 0, 0, self.scriptListLayout.AbsoluteContentSize.Y)
         end
     end
     
     function self:SetLoadCallback(callback)
         self.onLoadScript = callback
+    end
+    
+    function self:SetNewCallback(callback)
+        self.onNewScript = callback
     end
     
     return self
