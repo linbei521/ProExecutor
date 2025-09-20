@@ -4,12 +4,13 @@
 
 local OutputManager = {}
 
-function OutputManager.new(theme, utils)
+function OutputManager.new(theme, utils, config)
     local self = {}
     self.theme = theme
     self.utils = utils
+    self.config = config or {}
     self.outputCount = 0
-    self.maxOutputs = 30
+    self.maxOutputs = self.config.maxLines or 50
     
     function self:Setup(outputScroll, outputLayout)
         self.outputScroll = outputScroll
@@ -27,7 +28,7 @@ function OutputManager.new(theme, utils)
         outputItem.BackgroundTransparency = 1
         outputItem.Text = string.format("[%s] %s", self.utils:FormatTimestamp(), text)
         outputItem.TextColor3 = color or self.theme.Colors.Text
-        outputItem.TextSize = 11
+        outputItem.TextSize = 10
         outputItem.Font = Enum.Font.Code
         outputItem.TextXAlignment = Enum.TextXAlignment.Left
         outputItem.TextWrapped = true
