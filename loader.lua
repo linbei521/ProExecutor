@@ -1,9 +1,6 @@
-
-
 local ProExecutorLoader = {}
 
--- 配置 - 请替换为你的GitHub用户名
-local GITHUB_USER = "linbei521"  -- 改成你的GitHub用户名
+local GITHUB_USER = "linbei521"  
 local REPO_NAME = "ProExecutor"
 local BRANCH = "main"
 local GITHUB_BASE = string.format("https://raw.githubusercontent.com/%s/%s/%s", GITHUB_USER, REPO_NAME, BRANCH)
