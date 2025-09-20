@@ -1,8 +1,3 @@
---[[
-    ProExecutor 主程序 - 恢复原始UI版本
-    保持与最初脚本完全相同的UI布局和样式
-]]
-
 -- 安全获取模块和配置
 local Theme = modules and modules.Theme
 local Storage = modules and modules.Storage
