@@ -1,11 +1,4 @@
---[[
-    ProExecutor GitHub加载器 - 修复版
-    
-    使用方法:
-    loadstring(game:HttpGet("https://raw.githubusercontent.com/YourUsername/ProExecutor/main/loader.lua"))()
-    
-    替换YourUsername为你的GitHub用户名
-]]
+
 
 local ProExecutorLoader = {}
 
