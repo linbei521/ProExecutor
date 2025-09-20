@@ -1,15 +1,21 @@
 --[[
-    ProExecutor - GitHub模块加载器
-    仓库地址: https://github.com/YourUsername/ProExecutor
+    ProExecutor GitHub加载器
     
     使用方法:
     loadstring(game:HttpGet("https://raw.githubusercontent.com/YourUsername/ProExecutor/main/loader.lua"))()
+    
+    替换YourUsername为你的GitHub用户名
 ]]
 
 local ProExecutorLoader = {}
 
--- 配置
-local GITHUB_BASE = "https://raw.githubusercontent.com/YourUsername/ProExecutor/main"
+-- 配置 - 请替换为你的GitHub用户名
+local GITHUB_USER = "YourUsername"  -- 改成你的GitHub用户名
+local REPO_NAME = "ProExecutor"
+local BRANCH = "main"
+local GITHUB_BASE = string.format("https://raw.githubusercontent.com/%s/%s/%s", GITHUB_USER, REPO_NAME, BRANCH)
+
+-- 模块列表
 local MODULES = {
     "Theme",
     "Storage", 
@@ -29,6 +35,7 @@ end
 
 local HttpService = game:GetService("HttpService")
 local UserInputService = game:GetService("UserInputService")
+local CoreGui = game:GetService("CoreGui")
 
 -- 检测设备类型
 local function detectDevice()
@@ -38,6 +45,29 @@ end
 -- 模块缓存
 local moduleCache = {}
 
+-- HTTP请求重试机制
+local function httpGetWithRetry(url, maxRetries)
+    maxRetries = maxRetries or 3
+    local lastError = nil
+    
+    for i = 1, maxRetries do
+        local success, result = pcall(function()
+            return game:HttpGet(url)
+        end)
+        
+        if success then
+            return result
+        else
+            lastError = result
+            if i < maxRetries then
+                wait(1) -- 等待1秒后重试
+            end
+        end
+    end
+    
+    error("HTTP请求失败 (重试" .. maxRetries .. "次): " .. tostring(lastError))
+end
+
 -- 加载模块函数
 local function loadModule(moduleName)
     if moduleCache[moduleName] then
@@ -46,13 +76,7 @@ local function loadModule(moduleName)
     
     local url = GITHUB_BASE .. "/modules/" .. moduleName .. ".lua"
     
-    local success, response = pcall(function()
-        return game:HttpGet(url)
-    end)
-    
-    if not success then
-        error("无法加载模块 " .. moduleName .. ": " .. tostring(response))
-    end
+    local response = httpGetWithRetry(url)
     
     local moduleFunc, compileError = loadstring(response)
     if not moduleFunc then
@@ -71,11 +95,11 @@ local function loadConfig()
     local configUrl = GITHUB_BASE .. "/configs/" .. device .. ".lua"
     
     local success, response = pcall(function()
-        return game:HttpGet(configUrl)
+        return httpGetWithRetry(configUrl)
     end)
     
     if success then
-        local configFunc = loadstring(response)
+        local configFunc, compileError = loadstring(response)
         if configFunc then
             return configFunc()
         end
@@ -84,19 +108,36 @@ local function loadConfig()
     -- 返回默认配置
     return {
         windowSize = device == "mobile" and {340, 400} or {450, 320},
-        touchOptimized = device == "mobile"
+        touchOptimized = device == "mobile",
+        device = device
     }
+end
+
+-- 检查版本
+local function checkVersion()
+    local success, response = pcall(function()
+        return httpGetWithRetry(GITHUB_BASE .. "/version.lua")
+    end)
+    
+    if success then
+        local versionFunc = loadstring(response)
+        if versionFunc then
+            return versionFunc()
+        end
+    end
+    
+    return { version = "unknown", updateRequired = false }
 end
 
 -- 显示加载进度
 local function showLoadingProgress()
     local screenGui = Instance.new("ScreenGui")
     screenGui.Name = "ProExecutorLoader"
-    screenGui.Parent = game:GetService("CoreGui")
+    screenGui.Parent = CoreGui
     
     local loadingFrame = Instance.new("Frame")
-    loadingFrame.Size = UDim2.new(0, 300, 0, 100)
-    loadingFrame.Position = UDim2.new(0.5, -150, 0.5, -50)
+    loadingFrame.Size = UDim2.new(0, 300, 0, 120)
+    loadingFrame.Position = UDim2.new(0.5, -150, 0.5, -60)
     loadingFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 35)
     loadingFrame.BorderSizePixel = 0
     loadingFrame.Parent = screenGui
@@ -108,15 +149,25 @@ local function showLoadingProgress()
     local titleLabel = Instance.new("TextLabel")
     titleLabel.Size = UDim2.new(1, 0, 0, 30)
     titleLabel.BackgroundTransparency = 1
-    titleLabel.Text = "🚀 加载ProExecutor..."
+    titleLabel.Text = "🚀 ProExecutor 加载中..."
     titleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-    titleLabel.TextSize = 14
-    titleLabel.Font = Enum.Font.SourceSansSemibold
+    titleLabel.TextSize = 16
+    titleLabel.Font = Enum.Font.SourceSansBold
     titleLabel.Parent = loadingFrame
+    
+    local deviceLabel = Instance.new("TextLabel")
+    deviceLabel.Size = UDim2.new(1, 0, 0, 20)
+    deviceLabel.Position = UDim2.new(0, 0, 0, 25)
+    deviceLabel.BackgroundTransparency = 1
+    deviceLabel.Text = "设备: " .. detectDevice() .. " | 来源: GitHub"
+    deviceLabel.TextColor3 = Color3.fromRGB(150, 150, 150)
+    deviceLabel.TextSize = 10
+    deviceLabel.Font = Enum.Font.SourceSans
+    deviceLabel.Parent = loadingFrame
     
     local progressLabel = Instance.new("TextLabel")
     progressLabel.Size = UDim2.new(1, -20, 0, 20)
-    progressLabel.Position = UDim2.new(0, 10, 0, 35)
+    progressLabel.Position = UDim2.new(0, 10, 0, 50)
     progressLabel.BackgroundTransparency = 1
     progressLabel.Text = "正在初始化..."
     progressLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
@@ -125,22 +176,42 @@ local function showLoadingProgress()
     progressLabel.TextXAlignment = Enum.TextXAlignment.Left
     progressLabel.Parent = loadingFrame
     
+    local progressBg = Instance.new("Frame")
+    progressBg.Size = UDim2.new(1, -20, 0, 6)
+    progressBg.Position = UDim2.new(0, 10, 0, 75)
+    progressBg.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+    progressBg.BorderSizePixel = 0
+    progressBg.Parent = loadingFrame
+    
+    local progressBgCorner = Instance.new("UICorner")
+    progressBgCorner.CornerRadius = UDim.new(0, 3)
+    progressBgCorner.Parent = progressBg
+    
     local progressBar = Instance.new("Frame")
-    progressBar.Size = UDim2.new(0, 0, 0, 4)
-    progressBar.Position = UDim2.new(0, 10, 0, 60)
+    progressBar.Size = UDim2.new(0, 0, 1, 0)
     progressBar.BackgroundColor3 = Color3.fromRGB(88, 101, 242)
     progressBar.BorderSizePixel = 0
-    progressBar.Parent = loadingFrame
+    progressBar.Parent = progressBg
     
     local progressCorner = Instance.new("UICorner")
-    progressCorner.CornerRadius = UDim.new(0, 2)
+    progressCorner.CornerRadius = UDim.new(0, 3)
     progressCorner.Parent = progressBar
+    
+    local statusLabel = Instance.new("TextLabel")
+    statusLabel.Size = UDim2.new(1, 0, 0, 15)
+    statusLabel.Position = UDim2.new(0, 0, 0, 85)
+    statusLabel.BackgroundTransparency = 1
+    statusLabel.Text = "v" .. (checkVersion().version or "unknown")
+    statusLabel.TextColor3 = Color3.fromRGB(100, 100, 100)
+    statusLabel.TextSize = 9
+    statusLabel.Font = Enum.Font.SourceSans
+    statusLabel.Parent = loadingFrame
     
     return {
         gui = screenGui,
         updateProgress = function(current, total, message)
             local progress = current / total
-            progressBar:TweenSize(UDim2.new(progress, -20, 0, 4), "Out", "Quad", 0.2, true)
+            progressBar:TweenSize(UDim2.new(progress, 0, 1, 0), "Out", "Quad", 0.2, true)
             progressLabel.Text = message or ("加载中... " .. current .. "/" .. total)
         end,
         destroy = function()
@@ -153,94 +224,67 @@ end
 function ProExecutorLoader:Load()
     -- 清理旧版本
     pcall(function()
-        local existing = game:GetService("CoreGui"):FindFirstChild("ProExecutor")
+        local existing = CoreGui:FindFirstChild("ProExecutor")
         if existing then existing:Destroy() end
     end)
     
     local loader = showLoadingProgress()
+    local totalSteps = #MODULES + 4
+    local currentStep = 0
     
     wait(0.1) -- 让加载界面显示
     
+    -- 检查版本
+    currentStep = currentStep + 1
+    loader.updateProgress(currentStep, totalSteps, "🔍 检查版本...")
+    local versionInfo = checkVersion()
+    
     -- 加载配置
-    loader.updateProgress(1, #MODULES + 3, "🔧 加载配置...")
+    currentStep = currentStep + 1
+    loader.updateProgress(currentStep, totalSteps, "🔧 加载配置...")
     local config = loadConfig()
     
     -- 加载所有模块
     local modules = {}
     for i, moduleName in ipairs(MODULES) do
-        loader.updateProgress(i + 1, #MODULES + 3, "📦 加载模块: " .. moduleName)
+        currentStep = currentStep + 1
+        loader.updateProgress(currentStep, totalSteps, "📦 加载: " .. moduleName)
         modules[moduleName] = loadModule(moduleName)
         wait(0.05) -- 避免请求过快
     end
     
     -- 加载主程序
-    loader.updateProgress(#MODULES + 2, #MODULES + 3, "🚀 启动主程序...")
+    currentStep = currentStep + 1
+    loader.updateProgress(currentStep, totalSteps, "🚀 启动程序...")
     local mainUrl = GITHUB_BASE .. "/main.lua"
-    local mainCode = game:HttpGet(mainUrl)
+    local mainCode = httpGetWithRetry(mainUrl)
     
-    -- 创建执行环境
-    local env = {
-        -- 提供模块访问
-        modules = modules,
-        config = config,
-        
-        -- Roblox服务
-        game = game,
-        workspace = workspace,
-        
-        -- 标准库
-        print = print,
-        warn = warn,
-        error = error,
-        wait = wait,
-        spawn = spawn,
-        delay = delay,
-        tick = tick,
-        
-        -- 实例创建
-        Instance = Instance,
-        
-        -- 数学和字符串
-        math = math,
-        string = string,
-        table = table,
-        pairs = pairs,
-        ipairs = ipairs,
-        next = next,
-        
-        -- 其他
-        typeof = typeof,
-        tostring = tostring,
-        tonumber = tonumber,
-        pcall = pcall,
-        xpcall = xpcall,
-        getfenv = getfenv,
-        setfenv = setfenv,
-        loadstring = loadstring,
-        
-        -- Roblox特定
-        Color3 = Color3,
-        Vector3 = Vector3,
-        CFrame = CFrame,
-        UDim2 = UDim2,
-        UDim = UDim,
-        Enum = Enum
-    }
-    
-    loader.updateProgress(#MODULES + 3, #MODULES + 3, "✅ 加载完成!")
+    -- 最终准备
+    currentStep = currentStep + 1
+    loader.updateProgress(currentStep, totalSteps, "✅ 准备完成!")
     
     wait(0.5)
     loader.destroy()
     
+    -- 创建执行环境
+    local env = getfenv(1)
+    env.modules = modules
+    env.config = config
+    env.versionInfo = versionInfo
+    
     -- 执行主程序
-    local mainFunc = loadstring(mainCode)
+    local mainFunc, compileError = loadstring(mainCode)
+    if not mainFunc then
+        error("主程序编译失败: " .. tostring(compileError))
+    end
+    
     setfenv(mainFunc, env)
     mainFunc()
 end
 
 -- 错误处理包装
 local function safeLoad()
-    local success, error = pcall(function()
+    local success, errorMsg = pcall(function()
         ProExecutorLoader:Load()
     end)
     
@@ -248,11 +292,11 @@ local function safeLoad()
         -- 创建错误显示
         local errorGui = Instance.new("ScreenGui")
         errorGui.Name = "ProExecutorError"
-        errorGui.Parent = game:GetService("CoreGui")
+        errorGui.Parent = CoreGui
         
         local errorFrame = Instance.new("Frame")
-        errorFrame.Size = UDim2.new(0, 400, 0, 200)
-        errorFrame.Position = UDim2.new(0.5, -200, 0.5, -100)
+        errorFrame.Size = UDim2.new(0, 400, 0, 250)
+        errorFrame.Position = UDim2.new(0.5, -200, 0.5, -125)
         errorFrame.BackgroundColor3 = Color3.fromRGB(237, 66, 69)
         errorFrame.BorderSizePixel = 0
         errorFrame.Parent = errorGui
@@ -271,21 +315,32 @@ local function safeLoad()
         title.Parent = errorFrame
         
         local errorText = Instance.new("TextLabel")
-        errorText.Size = UDim2.new(1, -20, 1, -80)
+        errorText.Size = UDim2.new(1, -20, 1, -120)
         errorText.Position = UDim2.new(0, 10, 0, 45)
         errorText.BackgroundTransparency = 1
-        errorText.Text = "错误信息: " .. tostring(error) .. "\n\n请检查:\n• 网络连接\n• GitHub仓库地址\n• HttpService是否启用"
+        errorText.Text = "错误信息:\n" .. tostring(errorMsg) .. "\n\n请检查:\n• 网络连接是否正常\n• GitHub仓库是否可访问\n• HttpService是否启用\n• 执行器是否支持HTTP请求"
         errorText.TextColor3 = Color3.fromRGB(255, 255, 255)
-        errorText.TextSize = 12
+        errorText.TextSize = 11
         errorText.Font = Enum.Font.SourceSans
         errorText.TextXAlignment = Enum.TextXAlignment.Left
         errorText.TextYAlignment = Enum.TextYAlignment.Top
         errorText.TextWrapped = true
         errorText.Parent = errorFrame
         
+        local repoLink = Instance.new("TextLabel")
+        repoLink.Size = UDim2.new(1, -20, 0, 20)
+        repoLink.Position = UDim2.new(0, 10, 1, -70)
+        repoLink.BackgroundTransparency = 1
+        repoLink.Text = "GitHub: " .. GITHUB_BASE
+        repoLink.TextColor3 = Color3.fromRGB(200, 200, 200)
+        repoLink.TextSize = 9
+        repoLink.Font = Enum.Font.SourceSans
+        repoLink.TextXAlignment = Enum.TextXAlignment.Left
+        repoLink.Parent = errorFrame
+        
         local closeBtn = Instance.new("TextButton")
-        closeBtn.Size = UDim2.new(0, 100, 0, 30)
-        closeBtn.Position = UDim2.new(0.5, -50, 1, -35)
+        closeBtn.Size = UDim2.new(0, 100, 0, 35)
+        closeBtn.Position = UDim2.new(0.5, -50, 1, -45)
         closeBtn.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
         closeBtn.Text = "关闭"
         closeBtn.TextColor3 = Color3.fromRGB(0, 0, 0)
@@ -302,8 +357,10 @@ local function safeLoad()
             errorGui:Destroy()
         end)
         
-        -- 5秒后自动关闭
+        -- 10秒后自动关闭
         game:GetService("Debris"):AddItem(errorGui, 10)
+        
+        warn("ProExecutor加载失败: " .. tostring(errorMsg))
     end
 end
 
