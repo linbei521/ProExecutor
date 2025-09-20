@@ -16,7 +16,8 @@ local MODULES = {
     "AutoComplete",
     "CodeExecutor",
     "UI",
-    "HttpSpy"  -- 新增
+    "HttpSpy",
+    "RemoteSpy"  -- 新增
 }
 
 -- 检查执行环境
