@@ -19,7 +19,14 @@ return {
     features = {
         autoComplete = false,
         syntaxHighlight = false,
-        lineNumbers = false,
+        lineNumbers = true,
         keyboardShortcuts = false
+    },
+    performance = {
+        enableAnimations = false,
+        maxOutputLines = 30,
+        autoSaveInterval = 60,
+        enableShadows = false,
+        enablePerformanceOverlay = false
     }
 }
