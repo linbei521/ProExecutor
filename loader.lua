@@ -2,7 +2,7 @@
     ProExecutor GitHub加载器
     
     使用方法:
-    loadstring(game:HttpGet("https://raw.githubusercontent.com/YourUsername/ProExecutor/main/loader.lua"))()
+    loadstring(game:HttpGet("https://raw.githubusercontent.com/linbei521/ProExecutor/main/loader.lua"))()
     
     替换YourUsername为你的GitHub用户名
 ]]
@@ -10,7 +10,7 @@
 local ProExecutorLoader = {}
 
 -- 配置 - 请替换为你的GitHub用户名
-local GITHUB_USER = "YourUsername"  -- 改成你的GitHub用户名
+local GITHUB_USER = "linbei521"  -- 改成你的GitHub用户名
 local REPO_NAME = "ProExecutor"
 local BRANCH = "main"
 local GITHUB_BASE = string.format("https://raw.githubusercontent.com/%s/%s/%s", GITHUB_USER, REPO_NAME, BRANCH)
