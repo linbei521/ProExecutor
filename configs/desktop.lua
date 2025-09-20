@@ -21,5 +21,12 @@ return {
         syntaxHighlight = true,
         lineNumbers = true,
         keyboardShortcuts = true
+    },
+    performance = {
+        enableAnimations = true,
+        maxOutputLines = 50,
+        autoSaveInterval = 30,
+        enableShadows = true,
+        enablePerformanceOverlay = true
     }
 }
