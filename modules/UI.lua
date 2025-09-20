@@ -19,51 +19,14 @@ function UI.new(theme, utils, config)
         
         -- 侧边栏主体
         local sidePanel = Instance.new("Frame")
-        sidePanel.Size = UDim2.new(1, -12, 1, 0)
+        sidePanel.Size = UDim2.new(1, 0, 1, 0)
         sidePanel.BackgroundColor3 = self.theme.Colors.Secondary
         sidePanel.BorderSizePixel = 0
-        sidePanel.ClipsDescendants = true  -- 防止内容溢出
         sidePanel.Parent = container
         
         self.theme:CreateCorner(6).Parent = sidePanel
         
-        -- 折叠按钮容器（独立于侧边栏，确保不被裁剪）
-        local collapseBtnContainer = Instance.new("Frame")
-        collapseBtnContainer.Size = UDim2.new(0, 12, 1, 0)
-        collapseBtnContainer.Position = UDim2.new(1, -12, 0, 0)
-        collapseBtnContainer.BackgroundTransparency = 1
-        collapseBtnContainer.ZIndex = 10  -- 高层级
-        collapseBtnContainer.Parent = container
-        
-        -- 折叠按钮
-        local collapseBtn = Instance.new("TextButton")
-        collapseBtn.Size = UDim2.new(1, 0, 0, 60)
-        collapseBtn.Position = UDim2.new(0, 0, 0.5, -30)
-        collapseBtn.BackgroundColor3 = self.theme.Colors.Secondary
-        collapseBtn.Text = "◀"
-        collapseBtn.TextColor3 = self.theme.Colors.TextDim
-        collapseBtn.TextSize = 10
-        collapseBtn.Font = Enum.Font.SourceSansBold
-        collapseBtn.BorderSizePixel = 0
-        collapseBtn.ZIndex = 10  -- 确保在最上层
-        collapseBtn.Parent = collapseBtnContainer
-        
-        self.theme:CreateCorner(6).Parent = collapseBtn
-        
-        -- 添加阴影效果使按钮更明显
-        local shadow = Instance.new("Frame")
-        shadow.Size = UDim2.new(1, 4, 1, 4)
-        shadow.Position = UDim2.new(0, -2, 0, -2)
-        shadow.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-        shadow.BackgroundTransparency = 0.7
-        shadow.ZIndex = 9
-        shadow.Parent = collapseBtn
-        
-        local shadowCorner = Instance.new("UICorner")
-        shadowCorner.CornerRadius = UDim.new(0, 6)
-        shadowCorner.Parent = shadow
-        
-        -- Tab容器
+        -- Tab容器（包含折叠按钮）
         local tabContainer = Instance.new("Frame")
         tabContainer.Size = UDim2.new(1, 0, 0, 22)
         tabContainer.BackgroundColor3 = self.theme.Colors.Tertiary
@@ -71,6 +34,21 @@ function UI.new(theme, utils, config)
         tabContainer.Parent = sidePanel
         
         self.theme:CreateCorner(6).Parent = tabContainer
+        
+        -- 折叠按钮（集成在Tab栏右侧）
+        local collapseBtn = Instance.new("TextButton")
+        collapseBtn.Size = UDim2.new(0, 16, 1, -4)
+        collapseBtn.Position = UDim2.new(1, -18, 0, 2)
+        collapseBtn.BackgroundColor3 = self.theme.Colors.Background
+        collapseBtn.Text = "‹"  -- 使用更好看的符号
+        collapseBtn.TextColor3 = self.theme.Colors.Text
+        collapseBtn.TextSize = 12
+        collapseBtn.Font = Enum.Font.SourceSansBold
+        collapseBtn.BorderSizePixel = 0
+        collapseBtn.Parent = tabContainer
+        
+        self.theme:CreateCorner(3).Parent = collapseBtn
+        self.theme:AddHoverEffect(collapseBtn, self.theme.Colors.Background)
         
         -- 内容容器
         local contentContainer = Instance.new("Frame")
@@ -88,10 +66,10 @@ function UI.new(theme, utils, config)
         }
     end
     
-    -- 创建Tab按钮
+    -- 创建Tab按钮（为折叠按钮留出空间）
     function self:CreateTabButton(parent, text, position, active)
         local tab = Instance.new("TextButton")
-        tab.Size = UDim2.new(0.5, -3, 1, -4)
+        tab.Size = UDim2.new(0.5, -10, 1, -4)  -- 减少宽度为折叠按钮留空间
         tab.Position = position
         tab.BackgroundColor3 = active and self.theme.Colors.Accent or self.theme.Colors.Background
         tab.Text = text
