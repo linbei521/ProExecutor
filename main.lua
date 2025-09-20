@@ -1,6 +1,6 @@
 --[[
-    ProExecutor 主程序
-    由loader.lua加载，可以访问所有模块和配置
+    ProExecutor 主程序 - 原始UI版本
+    由loader.lua加载，使用原始的侧边栏+编辑器布局
 ]]
 
 -- 获取模块和配置
@@ -38,7 +38,6 @@ function ProExecutor.new()
     
     -- 创建管理器实例
     self.outputManager = OutputManager.new(self.theme, self.utils)
-    self.editor = Editor.new(self.theme, self.utils, self.config)
     self.codeExecutor = CodeExecutor.new(self.outputManager)
     self.ui = UI.new(self.theme, self.utils, self.config)
     
@@ -46,6 +45,7 @@ function ProExecutor.new()
     self.minimized = false
     self.originalSize = nil
     self.currentScript = nil
+    self.lastAutoCompleteWord = ""
     
     -- 初始化应用
     self:Initialize()
@@ -62,17 +62,38 @@ function ProExecutor:Initialize()
     -- 显示启动信息
     self.outputManager:LogSuccess("🚀 ProExecutor GitHub版已启动")
     self.outputManager:LogInfo("📦 模块化架构加载完成")
-    self.outputManager:LogInfo("🔧 配置: " .. (self.config.touchOptimized and "移动端优化" or "桌面端"))
+    self.outputManager:LogInfo("🎨 使用原始UI布局")
     self.outputManager:LogInfo("📋 版本: " .. (self.version.version or "unknown"))
 end
 
 function ProExecutor:CreateUI()
+    -- 检查是否为手机
+    local IsMobile = UserInputService.TouchEnabled and not UserInputService.MouseEnabled
+    
     -- 创建主界面
-    self.screenGui, self.mainFrame = self.ui:CreateMainWindow()
+    self.screenGui = Instance.new("ScreenGui")
+    self.screenGui.Name = "ProExecutor"
+    self.screenGui.ResetOnSpawn = false
+    self.screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+    self.screenGui.Parent = game:GetService("CoreGui")
+    
+    -- 主窗口
+    self.mainFrame = Instance.new("Frame")
+    self.mainFrame.Name = "MainFrame"
+    self.mainFrame.Size = IsMobile and UDim2.new(0, 380, 0, 280) or UDim2.new(0, 450, 0, 320)
+    self.mainFrame.Position = IsMobile and UDim2.new(0.5, -190, 0.5, -140) or UDim2.new(0.5, -225, 0.5, -160)
+    self.mainFrame.BackgroundColor3 = self.theme.Colors.Background
+    self.mainFrame.BorderSizePixel = 0
+    self.mainFrame.ClipsDescendants = true
+    self.mainFrame.Active = true
+    self.mainFrame.Parent = self.screenGui
+    
     self.originalSize = self.mainFrame.Size
+    self.theme:CreateCorner(8).Parent = self.mainFrame
+    self.theme:CreateBorder(1).Parent = self.mainFrame
     
     -- 创建顶部栏
-    self.topBar, self.minimizeBtn, self.closeBtn = self.ui:CreateTopBar(self.mainFrame)
+    self:CreateTopBar()
     
     -- 主容器
     self.mainContainer = Instance.new("Frame")
@@ -81,462 +102,532 @@ function ProExecutor:CreateUI()
     self.mainContainer.BackgroundTransparency = 1
     self.mainContainer.Parent = self.mainFrame
     
-    if self.config.touchOptimized then
-        self:CreateMobileUI()
-    else
-        self:CreateDesktopUI()
-    end
+    -- 创建侧边栏和编辑器区域
+    self:CreateSidePanel()
+    self:CreateEditorArea()
+    
+    -- 创建自动补全
+    self:CreateAutoComplete()
     
     -- 设置拖拽
     self:SetupDragging()
 end
 
-function ProExecutor:CreateMobileUI()
-    -- 移动端标签页界面
-    self:CreateTabSystem()
+function ProExecutor:CreateTopBar()
+    self.topBar = Instance.new("Frame")
+    self.topBar.Name = "TopBar"
+    self.topBar.Size = UDim2.new(1, 0, 0, 28)
+    self.topBar.BackgroundColor3 = self.theme.Colors.Secondary
+    self.topBar.BorderSizePixel = 0
+    self.topBar.Active = true
+    self.topBar.Parent = self.mainFrame
+    
+    self.theme:CreateCorner(8).Parent = self.topBar
+    
+    local topBarFix = Instance.new("Frame")
+    topBarFix.Size = UDim2.new(1, 0, 0, 10)
+    topBarFix.Position = UDim2.new(0, 0, 1, -10)
+    topBarFix.BackgroundColor3 = self.theme.Colors.Secondary
+    topBarFix.BorderSizePixel = 0
+    topBarFix.Parent = self.topBar
+    
+    -- 标题
+    local title = Instance.new("TextLabel")
+    title.Size = UDim2.new(0.4, 0, 1, 0)
+    title.Position = UDim2.new(0, 10, 0, 0)
+    title.BackgroundTransparency = 1
+    title.Text = "专业脚本执行器"
+    title.TextColor3 = self.theme.Colors.Text
+    title.TextSize = 13
+    title.Font = Enum.Font.SourceSansSemibold
+    title.TextXAlignment = Enum.TextXAlignment.Left
+    title.Parent = self.topBar
+    
+    -- 存储状态指示器
+    local storageIndicator = Instance.new("TextLabel")
+    storageIndicator.Size = UDim2.new(0, 50, 0, 16)
+    storageIndicator.Position = UDim2.new(0.5, -25, 0.5, -8)
+    storageIndicator.BackgroundColor3 = self.storage:HasFileSupport() and self.theme.Colors.Success or self.theme.Colors.Warning
+    storageIndicator.Text = self.storage:HasFileSupport() and "文件" or "内存"
+    storageIndicator.TextColor3 = Color3.fromRGB(255, 255, 255)
+    storageIndicator.TextSize = 10
+    storageIndicator.Font = Enum.Font.SourceSans
+    storageIndicator.Parent = self.topBar
+    self.theme:CreateCorner(4).Parent = storageIndicator
+    
+    -- 窗口控制按钮
+    local controlsFrame = Instance.new("Frame")
+    controlsFrame.Size = UDim2.new(0, 56, 1, 0)
+    controlsFrame.Position = UDim2.new(1, -56, 0, 0)
+    controlsFrame.BackgroundTransparency = 1
+    controlsFrame.Parent = self.topBar
+    
+    self.minimizeBtn = Instance.new("TextButton")
+    self.minimizeBtn.Size = UDim2.new(0, 28, 1, 0)
+    self.minimizeBtn.Position = UDim2.new(0, 0, 0, 0)
+    self.minimizeBtn.BackgroundTransparency = 1
+    self.minimizeBtn.Text = "_"
+    self.minimizeBtn.TextColor3 = self.theme.Colors.TextDim
+    self.minimizeBtn.TextSize = 14
+    self.minimizeBtn.Font = Enum.Font.SourceSansBold
+    self.minimizeBtn.Parent = controlsFrame
+    
+    self.closeBtn = Instance.new("TextButton")
+    self.closeBtn.Size = UDim2.new(0, 28, 1, 0)
+    self.closeBtn.Position = UDim2.new(0, 28, 0, 0)
+    self.closeBtn.BackgroundTransparency = 1
+    self.closeBtn.Text = "X"
+    self.closeBtn.TextColor3 = self.theme.Colors.TextDim
+    self.closeBtn.TextSize = 14
+    self.closeBtn.Font = Enum.Font.SourceSansBold
+    self.closeBtn.Parent = controlsFrame
 end
 
-function ProExecutor:CreateDesktopUI()
-    -- 桌面端分栏界面
-    self:CreateSidePanel()
-    self:CreateEditorArea()
-end
-
-function ProExecutor:CreateTabSystem()
-    -- 标签栏
-    local tabBar = Instance.new("Frame")
-    tabBar.Size = UDim2.new(1, 0, 0, 35)
-    tabBar.BackgroundTransparency = 1
-    tabBar.Parent = self.mainContainer
+function ProExecutor:CreateSidePanel()
+    -- 侧边栏（脚本列表）
+    local sidePanel = Instance.new("Frame")
+    sidePanel.Size = UDim2.new(0, 100, 1, 0)
+    sidePanel.BackgroundColor3 = self.theme.Colors.Secondary
+    sidePanel.BorderSizePixel = 0
+    sidePanel.Parent = self.mainContainer
     
-    -- 标签按钮
-    self.codeTab = self:CreateTabButton(tabBar, "代码", UDim2.new(0, 5, 0, 0), true)
-    self.scriptsTab = self:CreateTabButton(tabBar, "脚本", UDim2.new(0, 85, 0, 0), false)
-    self.outputTab = self:CreateTabButton(tabBar, "输出", UDim2.new(0, 165, 0, 0), false)
-    self.settingsTab = self:CreateTabButton(tabBar, "设置", UDim2.new(0, 245, 0, 0), false)
+    self.theme:CreateCorner(6).Parent = sidePanel
     
-    -- 内容区域
-    self.contentFrame = Instance.new("Frame")
-    self.contentFrame.Size = UDim2.new(1, 0, 1, -40)
-    self.contentFrame.Position = UDim2.new(0, 0, 0, 40)
-    self.contentFrame.BackgroundTransparency = 1
-    self.contentFrame.Parent = self.mainContainer
+    -- 脚本列表标题
+    local scriptListHeader = Instance.new("Frame")
+    scriptListHeader.Size = UDim2.new(1, 0, 0, 22)
+    scriptListHeader.BackgroundColor3 = self.theme.Colors.Tertiary
+    scriptListHeader.BorderSizePixel = 0
+    scriptListHeader.Parent = sidePanel
     
-    -- 创建各个标签页内容
-    self:CreateCodeTab()
-    self:CreateScriptsTab()
-    self:CreateOutputTab()
-    self:CreateSettingsTab()
+    self.theme:CreateCorner(6).Parent = scriptListHeader
     
-    -- 默认显示代码标签页
-    self:SwitchTab("code")
-end
-
-function ProExecutor:CreateTabButton(parent, text, position, active)
-    local button = Instance.new("TextButton")
-    button.Size = UDim2.new(0, 75, 0, 30)
-    button.Position = position
-    button.BackgroundColor3 = active and self.theme.Colors.Accent or self.theme.Colors.Secondary
-    button.Text = text
-    button.TextColor3 = self.theme.Colors.Text
-    button.TextSize = self.config.fontSize.normal
-    button.Font = Enum.Font.SourceSansSemibold
-    button.BorderSizePixel = 0
-    button.Parent = parent
+    local headerLabel = Instance.new("TextLabel")
+    headerLabel.Size = UDim2.new(1, 0, 1, 0)
+    headerLabel.BackgroundTransparency = 1
+    headerLabel.Text = "脚本列表"
+    headerLabel.TextColor3 = self.theme.Colors.Text
+    headerLabel.TextSize = 11
+    headerLabel.Font = Enum.Font.SourceSansSemibold
+    headerLabel.Parent = scriptListHeader
     
-    self.theme:CreateCorner(8).Parent = button
+    -- 脚本列表滚动框
+    self.scriptListScroll = Instance.new("ScrollingFrame")
+    self.scriptListScroll.Size = UDim2.new(1, -4, 1, -44)
+    self.scriptListScroll.Position = UDim2.new(0, 2, 0, 24)
+    self.scriptListScroll.BackgroundTransparency = 1
+    self.scriptListScroll.ScrollBarThickness = 2
+    self.scriptListScroll.ScrollBarImageColor3 = self.theme.Colors.Border
+    self.scriptListScroll.BorderSizePixel = 0
+    self.scriptListScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+    self.scriptListScroll.Parent = sidePanel
     
-    return button
-end
-
-function ProExecutor:CreateCodeTab()
-    self.codeFrame = Instance.new("Frame")
-    self.codeFrame.Size = UDim2.new(1, 0, 1, 0)
-    self.codeFrame.BackgroundTransparency = 1
-    self.codeFrame.Parent = self.contentFrame
+    self.scriptListLayout = Instance.new("UIListLayout")
+    self.scriptListLayout.SortOrder = Enum.SortOrder.LayoutOrder
+    self.scriptListLayout.Padding = UDim.new(0, 2)
+    self.scriptListLayout.Parent = self.scriptListScroll
     
-    -- 工具栏
-    local toolbar = Instance.new("Frame")
-    toolbar.Size = UDim2.new(1, 0, 0, 30)
-    toolbar.BackgroundColor3 = self.theme.Colors.Secondary
-    toolbar.BorderSizePixel = 0
-    toolbar.Parent = self.codeFrame
+    -- 新建脚本按钮
+    self.newScriptBtn = Instance.new("TextButton")
+    self.newScriptBtn.Size = UDim2.new(1, -4, 0, 18)
+    self.newScriptBtn.Position = UDim2.new(0, 2, 1, -20)
+    self.newScriptBtn.BackgroundColor3 = self.theme.Colors.Accent
+    self.newScriptBtn.Text = "新建"
+    self.newScriptBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    self.newScriptBtn.TextSize = 10
+    self.newScriptBtn.Font = Enum.Font.SourceSansSemibold
+    self.newScriptBtn.BorderSizePixel = 0
+    self.newScriptBtn.Parent = sidePanel
     
-    self.theme:CreateCorner(8).Parent = toolbar
-    
-    -- 工具按钮
-    self.templateBtn = self:CreateToolButton(toolbar, "模板", UDim2.new(0, 5, 0, 3))
-    self.clearBtn = self:CreateToolButton(toolbar, "清空", UDim2.new(0, 60, 0, 3))
-    self.formatBtn = self:CreateToolButton(toolbar, "格式化", UDim2.new(0, 115, 0, 3))
-    
-    -- 字符统计
-    self.charLabel = Instance.new("TextLabel")
-    self.charLabel.Size = UDim2.new(0, 100, 1, 0)
-    self.charLabel.Position = UDim2.new(1, -105, 0, 0)
-    self.charLabel.BackgroundTransparency = 1
-    self.charLabel.Text = "字符: 0"
-    self.charLabel.TextColor3 = self.theme.Colors.TextDim
-    self.charLabel.TextSize = self.config.fontSize.small
-    self.charLabel.Font = Enum.Font.SourceSans
-    self.charLabel.TextXAlignment = Enum.TextXAlignment.Right
-    self.charLabel.Parent = toolbar
-    
-    -- 代码编辑器
-    local editorFrame = Instance.new("Frame")
-    editorFrame.Size = UDim2.new(1, 0, 1, -80)
-    editorFrame.Position = UDim2.new(0, 0, 0, 35)
-    editorFrame.BackgroundColor3 = self.theme.Colors.Secondary
-    editorFrame.BorderSizePixel = 0
-    editorFrame.Parent = self.codeFrame
-    
-    self.theme:CreateCorner(8).Parent = editorFrame
-    
-    local editorScroll = Instance.new("ScrollingFrame")
-    editorScroll.Size = UDim2.new(1, -10, 1, -10)
-    editorScroll.Position = UDim2.new(0, 5, 0, 5)
-    editorScroll.BackgroundTransparency = 1
-    editorScroll.ScrollBarThickness = 4
-    editorScroll.BorderSizePixel = 0
-    editorScroll.Parent = editorFrame
-    
-    self.codeInput = Instance.new("TextBox")
-    self.codeInput.Size = UDim2.new(1, 0, 1, 0)
-    self.codeInput.BackgroundTransparency = 1
-    self.codeInput.Text = "-- ProExecutor GitHub版\n-- 在这里编写你的代码\nprint('Hello from GitHub!')"
-    self.codeInput.TextColor3 = self.theme.Colors.Text
-    self.codeInput.TextSize = self.config.fontSize.normal
-    self.codeInput.Font = Enum.Font.Code
-    self.codeInput.TextXAlignment = Enum.TextXAlignment.Left
-    self.codeInput.TextYAlignment = Enum.TextYAlignment.Top
-    self.codeInput.MultiLine = true
-    self.codeInput.ClearTextOnFocus = false
-    self.codeInput.Parent = editorScroll
-    
-    -- 设置编辑器
-    self.editor:SetupEditor(self.codeInput, editorScroll)
-    
-    -- 执行按钮
-    self.executeBtn = Instance.new("TextButton")
-    self.executeBtn.Size = UDim2.new(1, 0, 0, 40)
-    self.executeBtn.Position = UDim2.new(0, 0, 1, -40)
-    self.executeBtn.BackgroundColor3 = self.theme.Colors.Success
-    self.executeBtn.Text = "▶ 执行代码"
-    self.executeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-    self.executeBtn.TextSize = self.config.fontSize.title
-    self.executeBtn.Font = Enum.Font.SourceSansBold
-    self.executeBtn.BorderSizePixel = 0
-    self.executeBtn.Parent = self.codeFrame
-    
-    self.theme:CreateCorner(8).Parent = self.executeBtn
-end
-
-function ProExecutor:CreateScriptsTab()
-    self.scriptsFrame = Instance.new("Frame")
-    self.scriptsFrame.Size = UDim2.new(1, 0, 1, 0)
-    self.scriptsFrame.BackgroundTransparency = 1
-    self.scriptsFrame.Visible = false
-    self.scriptsFrame.Parent = self.contentFrame
-    
-    -- 脚本列表
-    local listFrame = Instance.new("Frame")
-    listFrame.Size = UDim2.new(1, 0, 1, -50)
-    listFrame.BackgroundColor3 = self.theme.Colors.Secondary
-    listFrame.BorderSizePixel = 0
-    listFrame.Parent = self.scriptsFrame
-    
-    self.theme:CreateCorner(8).Parent = listFrame
-    
-    self.scriptsList = Instance.new("ScrollingFrame")
-    self.scriptsList.Size = UDim2.new(1, -10, 1, -10)
-    self.scriptsList.Position = UDim2.new(0, 5, 0, 5)
-    self.scriptsList.BackgroundTransparency = 1
-    self.scriptsList.ScrollBarThickness = 4
-    self.scriptsList.BorderSizePixel = 0
-    self.scriptsList.Parent = listFrame
-    
-    self.scriptsLayout = Instance.new("UIListLayout")
-    self.scriptsLayout.Padding = UDim.new(0, 5)
-    self.scriptsLayout.Parent = self.scriptsList
+    self.theme:CreateCorner(4).Parent = self.newScriptBtn
+    self.theme:AddHoverEffect(self.newScriptBtn, self.theme.Colors.Accent)
     
     -- 初始化脚本管理器
     self.scriptManager = ScriptManager.new(self.theme, self.storage, self.utils, self.outputManager)
-    self.scriptManager:Setup(self.scriptsList, self.scriptsLayout)
-    
-    -- 按钮栏
-    local buttonFrame = Instance.new("Frame")
-    buttonFrame.Size = UDim2.new(1, 0, 0, 40)
-    buttonFrame.Position = UDim2.new(0, 0, 1, -40)
-    buttonFrame.BackgroundTransparency = 1
-    buttonFrame.Parent = self.scriptsFrame
-    
-    self.saveBtn = self:CreateActionButton(buttonFrame, "💾", self.theme.Colors.Accent, UDim2.new(0, 0, 0, 0))
-    self.exportBtn = self:CreateActionButton(buttonFrame, "📤", self.theme.Colors.Warning, UDim2.new(0, 85, 0, 0))
-    self.importBtn = self:CreateActionButton(buttonFrame, "📥", self.theme.Colors.Success, UDim2.new(0, 170, 0, 0))
-    self.deleteAllBtn = self:CreateActionButton(buttonFrame, "🗑️", self.theme.Colors.Error, UDim2.new(0, 255, 0, 0))
+    self.scriptManager:Setup(self.scriptListScroll, self.scriptListLayout, self.currentScriptLabel)
 end
 
-function ProExecutor:CreateOutputTab()
-    self.outputFrame = Instance.new("Frame")
-    self.outputFrame.Size = UDim2.new(1, 0, 1, 0)
-    self.outputFrame.BackgroundTransparency = 1
-    self.outputFrame.Visible = false
-    self.outputFrame.Parent = self.contentFrame
+function ProExecutor:CreateEditorArea()
+    -- 编辑器区域
+    local editorFrame = Instance.new("Frame")
+    editorFrame.Size = UDim2.new(1, -104, 1, 0)
+    editorFrame.Position = UDim2.new(0, 104, 0, 0)
+    editorFrame.BackgroundTransparency = 1
+    editorFrame.Parent = self.mainContainer
     
-    -- 输出显示区域
+    -- 代码工具栏
+    self:CreateToolBar(editorFrame)
+    
+    -- 编辑器容器
+    self:CreateEditorContainer(editorFrame)
+    
+    -- 输出区域
+    self:CreateOutputContainer(editorFrame)
+    
+    -- 按钮栏
+    self:CreateButtonBar(editorFrame)
+end
+
+function ProExecutor:CreateToolBar(parent)
+    local toolBar = Instance.new("Frame")
+    toolBar.Size = UDim2.new(1, 0, 0, 24)
+    toolBar.BackgroundColor3 = self.theme.Colors.Tertiary
+    toolBar.BorderSizePixel = 0
+    toolBar.Parent = parent
+    
+    self.theme:CreateCorner(6).Parent = toolBar
+    
+    -- 模板按钮
+    self.templateBtn = Instance.new("TextButton")
+    self.templateBtn.Size = UDim2.new(0, 50, 0, 18)
+    self.templateBtn.Position = UDim2.new(0, 3, 0, 3)
+    self.templateBtn.BackgroundColor3 = self.theme.Colors.Secondary
+    self.templateBtn.Text = "模板"
+    self.templateBtn.TextColor3 = self.theme.Colors.Text
+    self.templateBtn.TextSize = 10
+    self.templateBtn.Font = Enum.Font.SourceSans
+    self.templateBtn.BorderSizePixel = 0
+    self.templateBtn.Parent = toolBar
+    
+    self.theme:CreateCorner(3).Parent = self.templateBtn
+    
+    -- 格式化按钮
+    self.formatBtn = Instance.new("TextButton")
+    self.formatBtn.Size = UDim2.new(0, 50, 0, 18)
+    self.formatBtn.Position = UDim2.new(0, 56, 0, 3)
+    self.formatBtn.BackgroundColor3 = self.theme.Colors.Secondary
+    self.formatBtn.Text = "格式化"
+    self.formatBtn.TextColor3 = self.theme.Colors.Text
+    self.formatBtn.TextSize = 10
+    self.formatBtn.Font = Enum.Font.SourceSans
+    self.formatBtn.BorderSizePixel = 0
+    self.formatBtn.Parent = toolBar
+    
+    self.theme:CreateCorner(3).Parent = self.formatBtn
+    
+    -- 清空按钮
+    self.clearCodeBtn = Instance.new("TextButton")
+    self.clearCodeBtn.Size = UDim2.new(0, 50, 0, 18)
+    self.clearCodeBtn.Position = UDim2.new(0, 109, 0, 3)
+    self.clearCodeBtn.BackgroundColor3 = self.theme.Colors.Secondary
+    self.clearCodeBtn.Text = "清空"
+    self.clearCodeBtn.TextColor3 = self.theme.Colors.Text
+    self.clearCodeBtn.TextSize = 10
+    self.clearCodeBtn.Font = Enum.Font.SourceSans
+    self.clearCodeBtn.BorderSizePixel = 0
+    self.clearCodeBtn.Parent = toolBar
+    
+    self.theme:CreateCorner(3).Parent = self.clearCodeBtn
+    
+    -- 字符计数
+    self.charCount = Instance.new("TextLabel")
+    self.charCount.Size = UDim2.new(0, 80, 1, 0)
+    self.charCount.Position = UDim2.new(1, -80, 0, 0)
+    self.charCount.BackgroundTransparency = 1
+    self.charCount.Text = "行:1 字:0"
+    self.charCount.TextColor3 = self.theme.Colors.TextDim
+    self.charCount.TextSize = 10
+    self.charCount.Font = Enum.Font.SourceSans
+    self.charCount.TextXAlignment = Enum.TextXAlignment.Right
+    self.charCount.Parent = toolBar
+    
+    -- 添加悬停效果
+    self.theme:AddHoverEffect(self.templateBtn, self.theme.Colors.Secondary)
+    self.theme:AddHoverEffect(self.formatBtn, self.theme.Colors.Secondary)
+    self.theme:AddHoverEffect(self.clearCodeBtn, self.theme.Colors.Secondary)
+end
+
+function ProExecutor:CreateEditorContainer(parent)
+    local editorContainer = Instance.new("Frame")
+    editorContainer.Size = UDim2.new(1, 0, 0.56, -24)
+    editorContainer.Position = UDim2.new(0, 0, 0, 24)
+    editorContainer.BackgroundColor3 = self.theme.Colors.Secondary
+    editorContainer.BorderSizePixel = 0
+    editorContainer.Parent = parent
+    
+    self.theme:CreateCorner(6).Parent = editorContainer
+    
+    -- 行号容器
+    local lineNumberFrame = Instance.new("Frame")
+    lineNumberFrame.Size = UDim2.new(0, 28, 1, -8)
+    lineNumberFrame.Position = UDim2.new(0, 4, 0, 4)
+    lineNumberFrame.BackgroundColor3 = self.theme.Colors.Background
+    lineNumberFrame.BorderSizePixel = 0
+    lineNumberFrame.Parent = editorContainer
+    
+    self.theme:CreateCorner(4).Parent = lineNumberFrame
+    
+    -- 行号滚动框
+    self.lineNumberScroll = Instance.new("ScrollingFrame")
+    self.lineNumberScroll.Size = UDim2.new(1, 0, 1, 0)
+    self.lineNumberScroll.BackgroundTransparency = 1
+    self.lineNumberScroll.ScrollBarThickness = 0
+    self.lineNumberScroll.BorderSizePixel = 0
+    self.lineNumberScroll.ScrollingDirection = Enum.ScrollingDirection.Y
+    self.lineNumberScroll.Parent = lineNumberFrame
+    
+    -- 行号文本
+    self.lineNumberText = Instance.new("TextLabel")
+    self.lineNumberText.Size = UDim2.new(1, -3, 1, 0)
+    self.lineNumberText.Position = UDim2.new(0, 0, 0, 0)
+    self.lineNumberText.BackgroundTransparency = 1
+    self.lineNumberText.Text = "1"
+    self.lineNumberText.TextColor3 = self.theme.Colors.LineNumber
+    self.lineNumberText.TextSize = 11
+    self.lineNumberText.Font = Enum.Font.Code
+    self.lineNumberText.TextXAlignment = Enum.TextXAlignment.Right
+    self.lineNumberText.TextYAlignment = Enum.TextYAlignment.Top
+    self.lineNumberText.Parent = self.lineNumberScroll
+    
+    -- 代码编辑框
+    self.codeScroll = Instance.new("ScrollingFrame")
+    self.codeScroll.Size = UDim2.new(1, -40, 1, -8)
+    self.codeScroll.Position = UDim2.new(0, 36, 0, 4)
+    self.codeScroll.BackgroundTransparency = 1
+    self.codeScroll.ScrollBarThickness = 3
+    self.codeScroll.ScrollBarImageColor3 = self.theme.Colors.Border
+    self.codeScroll.BorderSizePixel = 0
+    self.codeScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+    self.codeScroll.Parent = editorContainer
+    
+    self.codeInput = Instance.new("TextBox")
+    self.codeInput.Size = UDim2.new(1, -8, 1, 0)
+    self.codeInput.Position = UDim2.new(0, 4, 0, 0)
+    self.codeInput.BackgroundTransparency = 1
+    self.codeInput.Text = "-- ProExecutor GitHub版\n-- 在此编写代码\nprint('Hello from GitHub!')"
+    self.codeInput.TextColor3 = self.theme.Colors.Text
+    self.codeInput.TextSize = 11
+    self.codeInput.Font = Enum.Font.Code
+    self.codeInput.TextXAlignment = Enum.TextXAlignment.Left
+    self.codeInput.TextYAlignment = Enum.TextYAlignment.Top
+    self.codeInput.ClearTextOnFocus = false
+    self.codeInput.MultiLine = true
+    self.codeInput.Parent = self.codeScroll
+    
+    -- 设置编辑器
+    self.editor = Editor.new(self.theme, self.utils)
+    self.editor:SetupEditor(self.codeInput, self.lineNumberText, self.codeScroll, self.lineNumberScroll, self.charCount)
+end
+
+function ProExecutor:CreateOutputContainer(parent)
     local outputContainer = Instance.new("Frame")
-    outputContainer.Size = UDim2.new(1, 0, 1, -50)
+    outputContainer.Size = UDim2.new(1, 0, 0.44, -22)
+    outputContainer.Position = UDim2.new(0, 0, 0.56, 2)
     outputContainer.BackgroundColor3 = self.theme.Colors.Secondary
     outputContainer.BorderSizePixel = 0
-    outputContainer.Parent = self.outputFrame
+    outputContainer.Parent = parent
     
-    self.theme:CreateCorner(8).Parent = outputContainer
+    self.theme:CreateCorner(6).Parent = outputContainer
     
+    -- 输出标题栏
+    local outputHeader = Instance.new("Frame")
+    outputHeader.Size = UDim2.new(1, 0, 0, 18)
+    outputHeader.BackgroundColor3 = self.theme.Colors.Tertiary
+    outputHeader.BorderSizePixel = 0
+    outputHeader.Parent = outputContainer
+    
+    self.theme:CreateCorner(6).Parent = outputHeader
+    
+    local outputHeaderFix = Instance.new("Frame")
+    outputHeaderFix.Size = UDim2.new(1, 0, 0, 10)
+    outputHeaderFix.Position = UDim2.new(0, 0, 1, -10)
+    outputHeaderFix.BackgroundColor3 = self.theme.Colors.Tertiary
+    outputHeaderFix.BorderSizePixel = 0
+    outputHeaderFix.Parent = outputHeader
+    
+    local outputLabel = Instance.new("TextLabel")
+    outputLabel.Size = UDim2.new(0.5, 0, 1, 0)
+    outputLabel.Position = UDim2.new(0, 8, 0, 0)
+    outputLabel.BackgroundTransparency = 1
+    outputLabel.Text = "输出"
+    outputLabel.TextColor3 = self.theme.Colors.Text
+    outputLabel.TextSize = 10
+    outputLabel.Font = Enum.Font.SourceSansSemibold
+    outputLabel.TextXAlignment = Enum.TextXAlignment.Left
+    outputLabel.Parent = outputHeader
+    
+    self.clearOutputBtn = Instance.new("TextButton")
+    self.clearOutputBtn.Size = UDim2.new(0, 35, 0, 14)
+    self.clearOutputBtn.Position = UDim2.new(1, -38, 0, 2)
+    self.clearOutputBtn.BackgroundColor3 = self.theme.Colors.Background
+    self.clearOutputBtn.Text = "清空"
+    self.clearOutputBtn.TextColor3 = self.theme.Colors.TextDim
+    self.clearOutputBtn.TextSize = 9
+    self.clearOutputBtn.Font = Enum.Font.SourceSans
+    self.clearOutputBtn.BorderSizePixel = 0
+    self.clearOutputBtn.Parent = outputHeader
+    
+    self.theme:CreateCorner(3).Parent = self.clearOutputBtn
+    
+    -- 输出滚动框
     self.outputScroll = Instance.new("ScrollingFrame")
-    self.outputScroll.Size = UDim2.new(1, -10, 1, -10)
-    self.outputScroll.Position = UDim2.new(0, 5, 0, 5)
+    self.outputScroll.Size = UDim2.new(1, -8, 1, -22)
+    self.outputScroll.Position = UDim2.new(0, 4, 0, 20)
     self.outputScroll.BackgroundTransparency = 1
-    self.outputScroll.ScrollBarThickness = 4
+    self.outputScroll.ScrollBarThickness = 3
+    self.outputScroll.ScrollBarImageColor3 = self.theme.Colors.Border
     self.outputScroll.BorderSizePixel = 0
+    self.outputScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
     self.outputScroll.Parent = outputContainer
     
     self.outputLayout = Instance.new("UIListLayout")
-    self.outputLayout.Padding = UDim.new(0, 2)
+    self.outputLayout.SortOrder = Enum.SortOrder.LayoutOrder
+    self.outputLayout.Padding = UDim.new(0, 1)
     self.outputLayout.Parent = self.outputScroll
     
     -- 设置输出管理器
     self.outputManager:Setup(self.outputScroll, self.outputLayout)
-    
-    -- 清空输出按钮
-    self.clearOutputBtn = Instance.new("TextButton")
-    self.clearOutputBtn.Size = UDim2.new(1, 0, 0, 40)
-    self.clearOutputBtn.Position = UDim2.new(0, 0, 1, -40)
-    self.clearOutputBtn.BackgroundColor3 = self.theme.Colors.Warning
-    self.clearOutputBtn.Text = "🗑️ 清空输出"
-    self.clearOutputBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-    self.clearOutputBtn.TextSize = self.config.fontSize.normal
-    self.clearOutputBtn.Font = Enum.Font.SourceSansBold
-    self.clearOutputBtn.BorderSizePixel = 0
-    self.clearOutputBtn.Parent = self.outputFrame
-    
-    self.theme:CreateCorner(8).Parent = self.clearOutputBtn
 end
 
-function ProExecutor:CreateSettingsTab()
-    self.settingsFrame = Instance.new("Frame")
-    self.settingsFrame.Size = UDim2.new(1, 0, 1, 0)
-    self.settingsFrame.BackgroundTransparency = 1
-    self.settingsFrame.Visible = false
-    self.settingsFrame.Parent = self.contentFrame
+function ProExecutor:CreateButtonBar(parent)
+    local buttonBar = Instance.new("Frame")
+    buttonBar.Size = UDim2.new(1, 0, 0, 20)
+    buttonBar.Position = UDim2.new(0, 0, 1, -20)
+    buttonBar.BackgroundTransparency = 1
+    buttonBar.Parent = parent
     
-    local settingsContainer = Instance.new("Frame")
-    settingsContainer.Size = UDim2.new(1, 0, 1, 0)
-    settingsContainer.BackgroundColor3 = self.theme.Colors.Secondary
-    settingsContainer.BorderSizePixel = 0
-    settingsContainer.Parent = self.settingsFrame
-    
-    self.theme:CreateCorner(8).Parent = settingsContainer
-    
-    -- 设置内容
-    local scrollFrame = Instance.new("ScrollingFrame")
-    scrollFrame.Size = UDim2.new(1, -10, 1, -10)
-    scrollFrame.Position = UDim2.new(0, 5, 0, 5)
-    scrollFrame.BackgroundTransparency = 1
-    scrollFrame.ScrollBarThickness = 4
-    scrollFrame.BorderSizePixel = 0
-    scrollFrame.Parent = settingsContainer
-    
-    -- 标题
-    local title = Instance.new("TextLabel")
-    title.Size = UDim2.new(1, 0, 0, 40)
-    title.BackgroundTransparency = 1
-    title.Text = "⚙️ ProExecutor 设置"
-    title.TextColor3 = self.theme.Colors.Text
-    title.TextSize = self.config.fontSize.title + 2
-    title.Font = Enum.Font.SourceSansBold
-    title.Parent = scrollFrame
-    
-    -- 版本信息
-    local versionLabel = Instance.new("TextLabel")
-    versionLabel.Size = UDim2.new(1, -20, 0, 30)
-    versionLabel.Position = UDim2.new(0, 10, 0, 50)
-    versionLabel.BackgroundTransparency = 1
-    versionLabel.Text = "版本: " .. (self.version.version or "unknown") .. " (GitHub版)"
-    versionLabel.TextColor3 = self.theme.Colors.TextDim
-    versionLabel.TextSize = self.config.fontSize.normal
-    versionLabel.Font = Enum.Font.SourceSans
-    versionLabel.TextXAlignment = Enum.TextXAlignment.Left
-    versionLabel.Parent = scrollFrame
-    
-    -- 设备信息
-    local deviceLabel = Instance.new("TextLabel")
-    deviceLabel.Size = UDim2.new(1, -20, 0, 30)
-    deviceLabel.Position = UDim2.new(0, 10, 0, 85)
-    deviceLabel.BackgroundTransparency = 1
-    deviceLabel.Text = "设备: " .. self.config.device .. " | 优化: " .. (self.config.touchOptimized and "移动端" or "桌面端")
-    deviceLabel.TextColor3 = self.theme.Colors.TextDim
-    deviceLabel.TextSize = self.config.fontSize.normal
-    deviceLabel.Font = Enum.Font.SourceSans
-    deviceLabel.TextXAlignment = Enum.TextXAlignment.Left
-    deviceLabel.Parent = scrollFrame
-    
-    -- 存储状态
-    local storageLabel = Instance.new("TextLabel")
-    storageLabel.Size = UDim2.new(1, -20, 0, 30)
-    storageLabel.Position = UDim2.new(0, 10, 0, 120)
-    storageLabel.BackgroundTransparency = 1
-    storageLabel.Text = "存储: " .. self.storage:GetStorageType()
-    storageLabel.TextColor3 = self.theme.Colors.TextDim
-    storageLabel.TextSize = self.config.fontSize.normal
-    storageLabel.Font = Enum.Font.SourceSans
-    storageLabel.TextXAlignment = Enum.TextXAlignment.Left
-    storageLabel.Parent = scrollFrame
-    
-    -- 功能说明
-    local helpText = Instance.new("TextLabel")
-    helpText.Size = UDim2.new(1, -20, 0, 200)
-    helpText.Position = UDim2.new(0, 10, 0, 165)
-    helpText.BackgroundTransparency = 1
-    helpText.Text = [[
-📱 ProExecutor GitHub版说明：
-
-🔧 模块化架构：
-• 所有代码托管在GitHub
-• 支持在线更新
-• 模块化设计，易于维护
-
-🚀 功能特色：
-• 代码编辑和执行
-• 脚本保存和管理
-• 实时输出显示
-• 导入导出功能
-• 跨平台适配
-
-💡 使用技巧：
-• 拖拽移动窗口
-• 支持多行代码编辑
-• 自动保存功能
-• 快捷键支持]]
-    helpText.TextColor3 = self.theme.Colors.TextDim
-    helpText.TextSize = self.config.fontSize.small + 1
-    helpText.Font = Enum.Font.SourceSans
-    helpText.TextXAlignment = Enum.TextXAlignment.Left
-    helpText.TextYAlignment = Enum.TextYAlignment.Top
-    helpText.TextWrapped = true
-    helpText.Parent = scrollFrame
-    
-    scrollFrame.CanvasSize = UDim2.new(0, 0, 0, 380)
-end
-
-function ProExecutor:CreateToolButton(parent, text, position)
-    local button = Instance.new("TextButton")
-    button.Size = UDim2.new(0, 50, 0, 24)
-    button.Position = position
-    button.BackgroundColor3 = self.theme.Colors.Tertiary
-    button.Text = text
-    button.TextColor3 = self.theme.Colors.Text
-    button.TextSize = self.config.fontSize.small
-    button.Font = Enum.Font.SourceSans
-    button.BorderSizePixel = 0
-    button.Parent = parent
-    
-    self.theme:CreateCorner(4).Parent = button
-    self.theme:AddHoverEffect(button, self.theme.Colors.Tertiary)
-    
-    return button
-end
-
-function ProExecutor:CreateActionButton(parent, text, color, position)
-    local button = Instance.new("TextButton")
-    button.Size = UDim2.new(0, 80, 1, 0)
-    button.Position = position
-    button.BackgroundColor3 = color
-    button.Text = text
-    button.TextColor3 = Color3.fromRGB(255, 255, 255)
-    button.TextSize = self.config.fontSize.normal
-    button.Font = Enum.Font.SourceSansBold
-    button.BorderSizePixel = 0
-    button.Parent = parent
-    
-    self.theme:CreateCorner(6).Parent = button
-    self.theme:AddHoverEffect(button, color)
-    
-    return button
-end
-
-function ProExecutor:SwitchTab(tabName)
-    if not self.config.touchOptimized then return end
-    
-    -- 隐藏所有标签页
-    self.codeFrame.Visible = false
-    self.scriptsFrame.Visible = false
-    self.outputFrame.Visible = false
-    self.settingsFrame.Visible = false
-    
-    -- 重置按钮颜色
-    self.codeTab.BackgroundColor3 = self.theme.Colors.Secondary
-    self.scriptsTab.BackgroundColor3 = self.theme.Colors.Secondary
-    self.outputTab.BackgroundColor3 = self.theme.Colors.Secondary
-    self.settingsTab.BackgroundColor3 = self.theme.Colors.Secondary
-    
-    -- 显示对应标签页
-    if tabName == "code" then
-        self.codeFrame.Visible = true
-        self.codeTab.BackgroundColor3 = self.theme.Colors.Accent
-    elseif tabName == "scripts" then
-        self.scriptsFrame.Visible = true
-        self.scriptsTab.BackgroundColor3 = self.theme.Colors.Accent
-    elseif tabName == "output" then
-        self.outputFrame.Visible = true
-        self.outputTab.BackgroundColor3 = self.theme.Colors.Accent
-    elseif tabName == "settings" then
-        self.settingsFrame.Visible = true
-        self.settingsTab.BackgroundColor3 = self.theme.Colors.Accent
+    -- 创建按钮函数
+    local function CreateButton(text, color, position)
+        local Button = Instance.new("TextButton")
+        Button.Size = UDim2.new(0, 55, 1, 0)
+        Button.Position = position
+        Button.BackgroundColor3 = color
+        Button.Text = text
+        Button.TextColor3 = Color3.fromRGB(255, 255, 255)
+        Button.TextSize = 11
+        Button.Font = Enum.Font.SourceSansSemibold
+        Button.BorderSizePixel = 0
+        Button.Parent = buttonBar
+        
+        self.theme:CreateCorner(4).Parent = Button
+        self.theme:AddHoverEffect(Button, color)
+        
+        return Button
     end
+    
+    self.executeBtn = CreateButton("执行", self.theme.Colors.Success, UDim2.new(0, 0, 0, 0))
+    self.saveBtn = CreateButton("保存", self.theme.Colors.Accent, UDim2.new(0, 58, 0, 0))
+    self.exportBtn = CreateButton("导出", self.theme.Colors.Warning, UDim2.new(0, 116, 0, 0))
+    self.importBtn = CreateButton("导入", self.theme.Colors.Tertiary, UDim2.new(0, 174, 0, 0))
+    
+    -- 当前脚本标签
+    self.currentScriptLabel = Instance.new("TextLabel")
+    self.currentScriptLabel.Size = UDim2.new(0, 80, 1, 0)
+    self.currentScriptLabel.Position = UDim2.new(1, -80, 0, 0)
+    self.currentScriptLabel.BackgroundTransparency = 1
+    self.currentScriptLabel.Text = "未命名"
+    self.currentScriptLabel.TextColor3 = self.theme.Colors.TextDim
+    self.currentScriptLabel.TextSize = 10
+    self.currentScriptLabel.Font = Enum.Font.SourceSans
+    self.currentScriptLabel.TextXAlignment = Enum.TextXAlignment.Right
+    self.currentScriptLabel.Parent = buttonBar
+end
+
+function ProExecutor:CreateAutoComplete()
+    -- 自动补全提示框
+    self.autoCompleteFrame = Instance.new("Frame")
+    self.autoCompleteFrame.Size = UDim2.new(0, 150, 0, 100)
+    self.autoCompleteFrame.BackgroundColor3 = self.theme.Colors.Background
+    self.autoCompleteFrame.BorderSizePixel = 0
+    self.autoCompleteFrame.Visible = false
+    self.autoCompleteFrame.ZIndex = 10
+    self.autoCompleteFrame.Parent = self.screenGui
+    
+    self.theme:CreateCorner(6).Parent = self.autoCompleteFrame
+    self.theme:CreateBorder(1).Parent = self.autoCompleteFrame
+    
+    self.autoCompleteScroll = Instance.new("ScrollingFrame")
+    self.autoCompleteScroll.Size = UDim2.new(1, -4, 1, -4)
+    self.autoCompleteScroll.Position = UDim2.new(0, 2, 0, 2)
+    self.autoCompleteScroll.BackgroundTransparency = 1
+    self.autoCompleteScroll.ScrollBarThickness = 2
+    self.autoCompleteScroll.ScrollBarImageColor3 = self.theme.Colors.Border
+    self.autoCompleteScroll.BorderSizePixel = 0
+    self.autoCompleteScroll.Parent = self.autoCompleteFrame
+    
+    self.autoCompleteLayout = Instance.new("UIListLayout")
+    self.autoCompleteLayout.SortOrder = Enum.SortOrder.LayoutOrder
+    self.autoCompleteLayout.Padding = UDim.new(0, 1)
+    self.autoCompleteLayout.Parent = self.autoCompleteScroll
+    
+    -- 设置自动补全
+    self.autoComplete = AutoComplete.new(self.theme, self.utils)
+    self.autoComplete:Setup(self.autoCompleteFrame, self.autoCompleteScroll, self.autoCompleteLayout)
 end
 
 function ProExecutor:SetupEventHandlers()
-    if self.config.touchOptimized then
-        -- 移动端事件
-        self.codeTab.MouseButton1Click:Connect(function() self:SwitchTab("code") end)
-        self.scriptsTab.MouseButton1Click:Connect(function() self:SwitchTab("scripts") end)
-        self.outputTab.MouseButton1Click:Connect(function() self:SwitchTab("output") end)
-        self.settingsTab.MouseButton1Click:Connect(function() self:SwitchTab("settings") end)
-    end
-    
-    -- 通用事件
-    self.executeBtn.MouseButton1Click:Connect(function() self:ExecuteCode() end)
-    self.templateBtn.MouseButton1Click:Connect(function() self:ShowTemplates() end)
-    self.clearBtn.MouseButton1Click:Connect(function() self:ClearCode() end)
-    self.formatBtn.MouseButton1Click:Connect(function() self:FormatCode() end)
-    
-    if self.saveBtn then
-        self.saveBtn.MouseButton1Click:Connect(function() self:SaveScript() end)
-        self.exportBtn.MouseButton1Click:Connect(function() self.scriptManager:ExportScripts() end)
-        self.importBtn.MouseButton1Click:Connect(function() self.scriptManager:ImportScripts() end)
-        self.deleteAllBtn.MouseButton1Click:Connect(function() self:DeleteAllScripts() end)
-    end
-    
-    self.clearOutputBtn.MouseButton1Click:Connect(function() self.outputManager:Clear() end)
-    
-    -- 窗口控制
-    self.minimizeBtn.MouseButton1Click:Connect(function() self:ToggleMinimize() end)
-    self.closeBtn.MouseButton1Click:Connect(function() self.screenGui:Destroy() end)
-    
-    -- 编辑器事件
-    self.codeInput:GetPropertyChangedSignal("Text"):Connect(function()
-        self:UpdateCharCount()
-        self.editor:UpdateEditor()
+    -- 脚本管理器回调
+    self.scriptManager:SetLoadCallback(function(code)
+        self.editor:SetText(code)
     end)
     
-    -- 脚本管理器回调
-    if self.scriptManager then
-        self.scriptManager:SetLoadCallback(function(code)
-            self.codeInput.Text = code
-            if self.config.touchOptimized then
-                self:SwitchTab("code")
-            end
-        end)
-    end
+    self.scriptManager:SetNewCallback(function()
+        self.editor:SetText("-- 新脚本\n")
+    end)
+    
+    -- 自动补全回调
+    self.editor:SetCallback("onAutoComplete", function(word)
+        if #word > 2 then
+            local position = UDim2.new(0, self.mainFrame.Position.X.Offset + 140, 0, self.mainFrame.Position.Y.Offset + 100)
+            self.autoComplete:Show(word, position)
+        else
+            self.autoComplete:Hide()
+        end
+    end)
+    
+    self.autoComplete:SetSelectCallback(function(selected, original)
+        local text = self.editor:GetText()
+        local beforeCursor = text:sub(1, #text - #original)
+        self.editor:SetText(beforeCursor .. selected)
+    end)
+    
+    -- 按钮事件
+    self.executeBtn.MouseButton1Click:Connect(function()
+        self.codeExecutor:Execute(self.editor:GetText())
+    end)
+    
+    self.saveBtn.MouseButton1Click:Connect(function()
+        self:ShowSaveDialog()
+    end)
+    
+    self.exportBtn.MouseButton1Click:Connect(function()
+        self.scriptManager:ExportScripts()
+    end)
+    
+    self.importBtn.MouseButton1Click:Connect(function()
+        self.scriptManager:ImportScripts()
+    end)
+    
+    self.templateBtn.MouseButton1Click:Connect(function()
+        self:ShowTemplateMenu()
+    end)
+    
+    self.formatBtn.MouseButton1Click:Connect(function()
+        self.editor:FormatCode()
+        self.outputManager:LogSuccess("代码已格式化")
+    end)
+    
+    self.clearCodeBtn.MouseButton1Click:Connect(function()
+        self.editor:ClearCode()
+        self.outputManager:LogWarning("代码已清空")
+    end)
+    
+    self.newScriptBtn.MouseButton1Click:Connect(function()
+        self.scriptManager:NewScript()
+    end)
+    
+    self.clearOutputBtn.MouseButton1Click:Connect(function()
+        self.outputManager:Clear()
+    end)
+    
+    -- 窗口控制
+    self.minimizeBtn.MouseButton1Click:Connect(function()
+        self:ToggleMinimize()
+    end)
+    
+    self.closeBtn.MouseButton1Click:Connect(function()
+        self.screenGui:Destroy()
+    end)
 end
 
 function ProExecutor:SetupDragging()
@@ -578,8 +669,6 @@ function ProExecutor:SetupDragging()
 end
 
 function ProExecutor:SetupKeyboardShortcuts()
-    if self.config.touchOptimized then return end -- 移动端不需要键盘快捷键
-    
     UserInputService.InputBegan:Connect(function(input, processed)
         if processed then return end
         
@@ -587,72 +676,112 @@ function ProExecutor:SetupKeyboardShortcuts()
         
         if isCtrlDown then
             if input.KeyCode == Enum.KeyCode.Return then
-                self:ExecuteCode()
+                -- Ctrl+Enter 执行
+                self.codeExecutor:Execute(self.editor:GetText())
             elseif input.KeyCode == Enum.KeyCode.S then
-                self:SaveScript()
+                -- Ctrl+S 保存
+                self:ShowSaveDialog()
             elseif input.KeyCode == Enum.KeyCode.F then
-                self:FormatCode()
+                -- Ctrl+F 格式化
+                self.editor:FormatCode()
+                self.outputManager:LogSuccess("代码已格式化")
             end
         elseif input.KeyCode == Enum.KeyCode.Tab then
-            local currentText = self.codeInput.Text
-            self.codeInput.Text = currentText .. "    "
+            -- Tab 缩进
+            local currentText = self.editor:GetText()
+            self.editor:SetText(currentText .. "    ")
         end
     end)
 end
 
-function ProExecutor:UpdateCharCount()
-    local text = self.codeInput.Text
-    if self.charLabel then
-        self.charLabel.Text = "字符: " .. #text
-    end
-end
-
-function ProExecutor:ExecuteCode()
-    local code = self.codeInput.Text
-    self.codeExecutor:Execute(code)
-end
-
-function ProExecutor:ShowTemplates()
-    self.utils:ShowTemplateMenu(self.screenGui, self.theme, self.config, function(template)
-        self.codeInput.Text = self.codeInput.Text .. "\n" .. template
-        self.outputManager:LogSuccess("📝 已插入模板")
+function ProExecutor:ShowSaveDialog()
+    local dialog = Instance.new("Frame")
+    dialog.Size = UDim2.new(0, 200, 0, 90)
+    dialog.Position = UDim2.new(0.5, -100, 0.5, -45)
+    dialog.BackgroundColor3 = self.theme.Colors.Secondary
+    dialog.BorderSizePixel = 0
+    dialog.ZIndex = 10
+    dialog.Parent = self.screenGui
+    
+    self.theme:CreateCorner(8).Parent = dialog
+    
+    local dialogTitle = Instance.new("TextLabel")
+    dialogTitle.Size = UDim2.new(1, 0, 0, 25)
+    dialogTitle.BackgroundTransparency = 1
+    dialogTitle.Text = "保存脚本"
+    dialogTitle.TextColor3 = self.theme.Colors.Text
+    dialogTitle.TextSize = 12
+    dialogTitle.Font = Enum.Font.SourceSansSemibold
+    dialogTitle.Parent = dialog
+    
+    local nameInput = Instance.new("TextBox")
+    nameInput.Size = UDim2.new(1, -16, 0, 22)
+    nameInput.Position = UDim2.new(0, 8, 0, 28)
+    nameInput.BackgroundColor3 = self.theme.Colors.Background
+    nameInput.Text = ""
+    nameInput.PlaceholderText = "输入脚本名称..."
+    nameInput.PlaceholderColor3 = self.theme.Colors.TextDim
+    nameInput.TextColor3 = self.theme.Colors.Text
+    nameInput.TextSize = 11
+    nameInput.Font = Enum.Font.SourceSans
+    nameInput.BorderSizePixel = 0
+    nameInput.Parent = dialog
+    
+    self.theme:CreateCorner(4).Parent = nameInput
+    
+    local confirmBtn = Instance.new("TextButton")
+    confirmBtn.Size = UDim2.new(0, 50, 0, 20)
+    confirmBtn.Position = UDim2.new(0.5, -55, 1, -24)
+    confirmBtn.BackgroundColor3 = self.theme.Colors.Success
+    confirmBtn.Text = "保存"
+    confirmBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    confirmBtn.TextSize = 11
+    confirmBtn.Font = Enum.Font.SourceSansSemibold
+    confirmBtn.BorderSizePixel = 0
+    confirmBtn.Parent = dialog
+    
+    self.theme:CreateCorner(4).Parent = confirmBtn
+    
+    local cancelBtn = Instance.new("TextButton")
+    cancelBtn.Size = UDim2.new(0, 50, 0, 20)
+    cancelBtn.Position = UDim2.new(0.5, 5, 1, -24)
+    cancelBtn.BackgroundColor3 = self.theme.Colors.Tertiary
+    cancelBtn.Text = "取消"
+    cancelBtn.TextColor3 = self.theme.Colors.Text
+    cancelBtn.TextSize = 11
+    cancelBtn.Font = Enum.Font.SourceSansSemibold
+    cancelBtn.BorderSizePixel = 0
+    cancelBtn.Parent = dialog
+    
+    self.theme:CreateCorner(4).Parent = cancelBtn
+    
+    nameInput:CaptureFocus()
+    
+    confirmBtn.MouseButton1Click:Connect(function()
+        local name = nameInput.Text ~= "" and nameInput.Text or "未命名"
+        local success = self.scriptManager:SaveScript(name, self.editor:GetText())
+        if success then
+            dialog:Destroy()
+        end
+    end)
+    
+    cancelBtn.MouseButton1Click:Connect(function()
+        dialog:Destroy()
     end)
 end
 
-function ProExecutor:ClearCode()
-    self.codeInput.Text = ""
-    self.outputManager:LogWarning("🗑️ 代码已清空")
-end
-
-function ProExecutor:FormatCode()
-    local formatted = self.utils:FormatCode(self.codeInput.Text)
-    self.codeInput.Text = formatted
-    self.outputManager:LogSuccess("✨ 代码已格式化")
-end
-
-function ProExecutor:SaveScript()
-    local code = self.codeInput.Text
-    if code:gsub("%s", "") == "" then
-        self.outputManager:LogError("❌ 代码为空，无法保存")
-        return
-    end
-    
-    local name = "脚本_" .. os.date("%H%M%S")
-    if self.scriptManager then
-        self.scriptManager:SaveScript(name, code)
-    end
-end
-
-function ProExecutor:DeleteAllScripts()
-    if self.scriptManager then
-        self.scriptManager:DeleteAllScripts()
-    end
+function ProExecutor:ShowTemplateMenu()
+    self.utils:ShowTemplateMenu(self.screenGui, self.theme, {fontSize = {title = 16, normal = 12}}, function(template)
+        local currentText = self.editor:GetText()
+        self.editor:SetText(currentText .. "\n" .. template)
+        self.outputManager:LogSuccess("已插入模板")
+    end)
 end
 
 function ProExecutor:ToggleMinimize()
     self.minimized = not self.minimized
     if self.minimized then
-        self.mainFrame:TweenSize(UDim2.new(0, 200, 0, 30), "Out", "Quad", 0.3, true)
+        self.mainFrame:TweenSize(UDim2.new(0, 200, 0, 28), "Out", "Quad", 0.3, true)
         self.mainContainer.Visible = false
     else
         self.mainFrame:TweenSize(self.originalSize, "Out", "Quad", 0.3, true)
@@ -663,11 +792,15 @@ end
 
 function ProExecutor:LoadInitialData()
     -- 加载已保存的脚本
-    if self.scriptManager then
-        self.scriptManager:LoadSavedScripts()
-    end
+    self.scriptManager:LoadSavedScripts()
     
-    self:UpdateCharCount()
+    -- 初始化编辑器
+    self.editor:UpdateLineNumbers()
+    
+    -- 显示启动信息
+    self.outputManager:LogSuccess("脚本执行器已加载")
+    self.outputManager:LogInfo("存储模式: " .. self.storage:GetStorageType())
+    self.outputManager:LogInfo("快捷键: Ctrl+Enter执行 | Ctrl+S保存 | Ctrl+F格式化")
 end
 
 -- 启动应用
