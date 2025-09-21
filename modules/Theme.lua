@@ -15,13 +15,7 @@ Theme.Colors = {
     Text = Color3.fromRGB(225, 225, 230),
     TextDim = Color3.fromRGB(140, 140, 150),
     LineNumber = Color3.fromRGB(90, 90, 100),
-    Border = Color3.fromRGB(50, 50, 56),
-    -- 语法高亮颜色
-    Keyword = Color3.fromRGB(198, 120, 221),
-    String = Color3.fromRGB(152, 195, 121),
-    Comment = Color3.fromRGB(92, 99, 112),
-    Number = Color3.fromRGB(209, 154, 102),
-    Function = Color3.fromRGB(97, 175, 239)
+    Border = Color3.fromRGB(50, 50, 56)
 }
 
 function Theme:CreateCorner(radius)
