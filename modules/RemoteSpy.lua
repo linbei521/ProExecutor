@@ -1,5 +1,5 @@
 --[[
-    远程调用监控模块
+    远程调用监控模块 - 基于SimpleSpy v3
 ]]
 
 local RemoteSpy = {}
@@ -11,16 +11,133 @@ function RemoteSpy.new(theme, utils, outputManager)
     self.outputManager = outputManager
     self.active = false
     self.logs = {}
-    self.hooks = {}
     self.panels = {}
     self.blacklist = {}
     self.blocklist = {}
     self.selected = nil
     
-    -- SimpleSpy核心功能
+    -- SimpleSpy核心变量
     self.originalNamecall = nil
     self.originalFireServer = nil
     self.originalInvokeServer = nil
+    self.originalUnreliableFireServer = nil
+    self.connections = {}
+    self.remoteLogs = {}
+    self.layoutOrderNum = 999999999
+    self.maxRemotes = 300
+    self.funcEnabled = true
+    self.logCheckCaller = false
+    self.autoBlock = false
+    self.advancedInfo = false
+    
+    -- autoblock variables
+    self.history = {}
+    self.excluding = {}
+    
+    -- 服务
+    local HttpService = game:GetService("HttpService")
+    local Players = game:GetService("Players")
+    local RunService = game:GetService("RunService")
+    
+    -- 核心函数
+    local function cloneRef(obj)
+        return cloneref and cloneref(obj) or obj
+    end
+    
+    local function safeGetService(service)
+        return cloneRef(game:GetService(service))
+    end
+    
+    local function getDebugId(obj)
+        return game.GetDebugId(game, obj)
+    end
+    
+    local function isLClosure(func)
+        return islclosure and islclosure(func) or false
+    end
+    
+    local function getCallingScript()
+        return getcallingscript and getcallingscript() or nil
+    end
+    
+    local function checkCaller()
+        return checkcaller and checkcaller() or false
+    end
+    
+    -- 深拷贝函数
+    local function deepClone(original, copies)
+        copies = copies or {}
+        local copy
+        if type(original) == 'table' then
+            if copies[original] then
+                copy = copies[original]
+            else
+                copy = {}
+                copies[original] = copy
+                for key, value in next, original do
+                    copy[deepClone(key, copies)] = deepClone(value, copies)
+                end
+            end
+        elseif typeof(original) == "Instance" then
+            copy = cloneRef(original)
+        else
+            copy = original
+        end
+        return copy
+    end
+    
+    -- 检查循环表
+    local function isCyclicTable(tbl)
+        local checkedTables = {}
+        local function searchTable(t)
+            table.insert(checkedTables, t)
+            for i, v in next, t do
+                if type(v) == "table" then
+                    return table.find(checkedTables, v) and true or searchTable(v)
+                end
+            end
+        end
+        return searchTable(tbl)
+    end
+    
+    -- 值转字符串
+    local function valueToString(value, indent)
+        indent = indent or 0
+        local valueType = typeof(value)
+        local indentStr = string.rep("    ", indent)
+        
+        if valueType == "string" then
+            return '"' .. value:gsub('"', '\\"'):gsub('\n', '\\n'):gsub('\t', '\\t') .. '"'
+        elseif valueType == "number" or valueType == "boolean" then
+            return tostring(value)
+        elseif valueType == "table" then
+            if indent > 5 then return "{...}" end -- 防止过深嵌套
+            local str = "{\n"
+            local count = 0
+            for k, v in pairs(value) do
+                count = count + 1
+                if count > 50 then
+                    str = str .. indentStr .. "    -- ... (truncated)\n"
+                    break
+                end
+                local keyStr = type(k) == "string" and k:match("^[%a_][%w_]*$") and k or ("[" .. valueToString(k) .. "]")
+                str = str .. indentStr .. "    " .. keyStr .. " = " .. valueToString(v, indent + 1) .. ",\n"
+            end
+            return str .. indentStr .. "}"
+        elseif valueType == "Instance" then
+            return self:GetRemotePath(value)
+        elseif valueType == "Vector3" then
+            return "Vector3.new(" .. value.X .. ", " .. value.Y .. ", " .. value.Z .. ")"
+        elseif valueType == "CFrame" then
+            return "CFrame.new(" .. tostring(value) .. ")"
+        elseif valueType == "Color3" then
+            return "Color3.new(" .. value.R .. ", " .. value.G .. ", " .. value.B .. ")"
+        elseif valueType == "UDim2" then
+            return "UDim2.new(" .. value.X.Scale .. ", " .. value.X.Offset .. ", " .. value.Y.Scale .. ", " .. value.Y.Offset .. ")"
+        else
+            return "nil --[[" .. valueType .. "]]"
+        end
+    end
     
     function self:Setup(panels)
         self.panels = panels or {}
@@ -43,11 +160,9 @@ function RemoteSpy.new(theme, utils, outputManager)
         
         self.active = true
         self:UpdateUI()
-        
-        -- Hook远程调用
         self:HookRemotes()
         
-        self.outputManager:LogSuccess("RemoteSpy已启动")
+        self.outputManager:LogSuccess("SimpleSpy已启动")
     end
     
     function self:Stop()
@@ -55,11 +170,9 @@ function RemoteSpy.new(theme, utils, outputManager)
         
         self.active = false
         self:UpdateUI()
-        
-        -- 恢复原始函数
         self:UnhookRemotes()
         
-        self.outputManager:LogWarning("RemoteSpy已停止")
+        self.outputManager:LogWarning("SimpleSpy已停止")
     end
     
     function self:Toggle()
@@ -83,112 +196,205 @@ function RemoteSpy.new(theme, utils, outputManager)
     end
     
     function self:HookRemotes()
+        -- 获取原始函数
         local mt = getrawmetatable(game)
-        local oldNamecall = mt.__namecall
-        setreadonly(mt, false)
+        self.originalNamecall = mt.__namecall
         
-        -- 保存原始函数
-        self.originalNamecall = oldNamecall
-        self.originalFireServer = Instance.new("RemoteEvent").FireServer
-        self.originalInvokeServer = Instance.new("RemoteFunction").InvokeServer
-        
-        -- Hook namecall
-        mt.__namecall = newcclosure(function(...)
+        -- 创建新的namecall hook
+        local newNamecall = newcclosure(function(...)
             local method = getnamecallmethod()
             local args = {...}
             local remote = args[1]
             
-            if method == "FireServer" or method == "InvokeServer" then
-                if typeof(remote) == "Instance" and (remote:IsA("RemoteEvent") or remote:IsA("RemoteFunction")) then
-                    -- 检查黑名单
-                    if not self.blacklist[remote] and not self.blacklist[remote.Name] then
-                        -- 记录调用
-                        self:LogRemote(method, remote, {select(2, ...)})
-                        
-                        -- 检查阻止列表
-                        if self.blocklist[remote] or self.blocklist[remote.Name] then
-                            return nil -- 阻止调用
-                        end
+            if method and (method == "FireServer" or method == "fireServer" or method == "InvokeServer" or method == "invokeServer") then
+                if typeof(remote) == 'Instance' and (remote:IsA("RemoteEvent") or remote:IsA("RemoteFunction") or remote:IsA("UnreliableRemoteEvent")) then
+                    if not self.logCheckCaller and checkCaller() then
+                        return self.originalNamecall(...)
                     end
+                    
+                    local id = getDebugId(remote)
+                    local isBlocked = self:CheckTable(self.blocklist, remote, id)
+                    local callArgs = {select(2, ...)}
+                    
+                    if not self:CheckTable(self.blacklist, remote, id) and not isCyclicTable(callArgs) then
+                        local data = {
+                            method = method,
+                            remote = remote,
+                            args = deepClone(callArgs),
+                            callingScript = getCallingScript(),
+                            metamethod = "__namecall",
+                            blocked = isBlocked,
+                            id = id,
+                            timestamp = os.time()
+                        }
+                        
+                        if self.funcEnabled then
+                            data.functionInfo = debug.info(2, "f")
+                        end
+                        
+                        self:LogRemote(method, data)
+                    end
+                    
+                    if isBlocked then return end
                 end
             end
             
-            return oldNamecall(...)
+            return self.originalNamecall(...)
         end)
         
-        setreadonly(mt, true)
+        -- Hook namecall
+        if hookmetamethod then
+            hookmetamethod(game, "__namecall", newNamecall)
+        else
+            setreadonly(mt, false)
+            mt.__namecall = newNamecall
+            setreadonly(mt, true)
+        end
         
-        -- Hook RemoteEvent.FireServer
+        -- Hook 各种RemoteEvent方法
         if hookfunction then
-            hookfunction(self.originalFireServer, function(remote, ...)
-                if not self.blacklist[remote] and not self.blacklist[remote.Name] then
-                    self:LogRemote("FireServer", remote, {...})
-                    
-                    if self.blocklist[remote] or self.blocklist[remote.Name] then
-                        return nil
-                    end
-                end
-                return self.originalFireServer(remote, ...)
+            self.originalFireServer = hookfunction(Instance.new("RemoteEvent").FireServer, function(remote, ...)
+                return self:HandleRemoteCall("FireServer", remote, ...)
             end)
             
-            -- Hook RemoteFunction.InvokeServer
-            hookfunction(self.originalInvokeServer, function(remote, ...)
-                if not self.blacklist[remote] and not self.blacklist[remote.Name] then
-                    self:LogRemote("InvokeServer", remote, {...})
-                    
-                    if self.blocklist[remote] or self.blocklist[remote.Name] then
-                        return nil
-                    end
-                end
-                return self.originalInvokeServer(remote, ...)
+            self.originalInvokeServer = hookfunction(Instance.new("RemoteFunction").InvokeServer, function(remote, ...)
+                return self:HandleRemoteCall("InvokeServer", remote, ...)
+            end)
+            
+            self.originalUnreliableFireServer = hookfunction(Instance.new("UnreliableRemoteEvent").FireServer, function(remote, ...)
+                return self:HandleRemoteCall("FireServer", remote, ...)
             end)
         end
+    end
+    
+    function self:HandleRemoteCall(method, remote, ...)
+        if not self.logCheckCaller and checkCaller() then
+            if method == "FireServer" then
+                return self.originalFireServer(remote, ...)
+            elseif method == "InvokeServer" then
+                return self.originalInvokeServer(remote, ...)
+            end
+        end
+        
+        local id = getDebugId(remote)
+        local isBlocked = self:CheckTable(self.blocklist, remote, id)
+        local args = {...}
+        
+        if not self:CheckTable(self.blacklist, remote, id) and not isCyclicTable(args) then
+            local data = {
+                method = method,
+                remote = remote,
+                args = deepClone(args),
+                callingScript = getCallingScript(),
+                metamethod = "hookfunction",
+                blocked = isBlocked,
+                id = id,
+                timestamp = os.time()
+            }
+            
+            if self.funcEnabled then
+                data.functionInfo = debug.info(2, "f")
+            end
+            
+            self:LogRemote(method, data)
+        end
+        
+        if isBlocked then return end
+        
+        if method == "FireServer" then
+            return self.originalFireServer(remote, ...)
+        elseif method == "InvokeServer" then
+            return self.originalInvokeServer(remote, ...)
+        end
+    end
+    
+    function self:CheckTable(tbl, remote, id)
+        return tbl[id] or tbl[remote] or tbl[remote.Name]
     end
     
     function self:UnhookRemotes()
         if self.originalNamecall then
             local mt = getrawmetatable(game)
-            setreadonly(mt, false)
-            mt.__namecall = self.originalNamecall
-            setreadonly(mt, true)
+            if hookmetamethod then
+                hookmetamethod(game, "__namecall", self.originalNamecall)
+            else
+                setreadonly(mt, false)
+                mt.__namecall = self.originalNamecall
+                setreadonly(mt, true)
+            end
         end
         
-        -- 恢复hook的函数
-        if hookfunction and self.originalFireServer then
-            pcall(function()
+        if hookfunction then
+            if self.originalFireServer then
                 hookfunction(Instance.new("RemoteEvent").FireServer, self.originalFireServer)
-            end)
-        end
-        
-        if hookfunction and self.originalInvokeServer then
-            pcall(function()
+            end
+            if self.originalInvokeServer then
                 hookfunction(Instance.new("RemoteFunction").InvokeServer, self.originalInvokeServer)
-            end)
+            end
+            if self.originalUnreliableFireServer then
+                hookfunction(Instance.new("UnreliableRemoteEvent").FireServer, self.originalUnreliableFireServer)
+            end
         end
     end
     
-    function self:LogRemote(method, remote, args)
+    function self:LogRemote(method, data)
+        -- Auto-block check
+        if self.autoBlock then
+            local id = data.id
+            if self.excluding[id] then return end
+            
+            if not self.history[id] then
+                self.history[id] = {badOccurances = 0, lastCall = tick()}
+            end
+            
+            if tick() - self.history[id].lastCall < 1 then
+                self.history[id].badOccurances = self.history[id].badOccurances + 1
+                if self.history[id].badOccurances > 3 then
+                    self.excluding[id] = true
+                    return
+                end
+            else
+                self.history[id].badOccurances = 0
+            end
+            self.history[id].lastCall = tick()
+        end
+        
         local timestamp = self.utils:FormatTimestamp()
+        local remote = data.remote
+        
         local log = {
             method = method,
             remote = remote,
             remoteName = remote.Name,
             remotePath = remote:GetFullName(),
-            args = args,
+            args = data.args,
             timestamp = timestamp,
-            time = os.time(),
-            script = self:GenerateScript(method, remote, args)
+            time = data.timestamp,
+            callingScript = data.callingScript,
+            functionInfo = data.functionInfo,
+            metamethod = data.metamethod,
+            blocked = data.blocked,
+            id = data.id,
+            script = "-- 生成中，请稍候..."
         }
         
         table.insert(self.logs, log)
         
-        -- 添加到侧边栏简要日志
+        -- 生成脚本
+        spawn(function()
+            log.script = self:GenerateScript(method, remote, data.args)
+            if data.blocked then
+                log.script = "-- 此远程调用已被SimpleSpy阻止\n\n" .. log.script
+            end
+        end)
+        
+        -- 添加到侧边栏
         if self.logScroll then
             local entry = Instance.new("TextButton")
             entry.Size = UDim2.new(1, 0, 0, 20)
             entry.BackgroundColor3 = self.theme.Colors.Background
             entry.BorderSizePixel = 0
-            entry.LayoutOrder = #self.logs
+            entry.LayoutOrder = self.layoutOrderNum
             entry.Parent = self.logScroll
             
             local methodLabel = Instance.new("TextLabel")
@@ -228,9 +434,28 @@ function RemoteSpy.new(theme, utils, outputManager)
             end)
             
             log.entry = entry
+            self.layoutOrderNum = self.layoutOrderNum - 1
         end
         
+        -- 清理旧日志
+        self:CleanOldLogs()
         self:UpdateScrolls()
+    end
+    
+    function self:CleanOldLogs()
+        if #self.remoteLogs > self.maxRemotes then
+            for i = 100, #self.remoteLogs do
+                local log = self.remoteLogs[i]
+                if log.entry then
+                    log.entry:Destroy()
+                end
+            end
+            local newLogs = {}
+            for i = 1, 100 do
+                table.insert(newLogs, self.remoteLogs[i])
+            end
+            self.remoteLogs = newLogs
+        end
     end
     
     function self:SelectLog(log, entry)
@@ -242,12 +467,17 @@ function RemoteSpy.new(theme, utils, outputManager)
         self.selected = log
         entry.BackgroundColor3 = self.theme.Colors.Accent
         
-        -- 显示详细信息
+        -- 显示详细信息和代码
         self:ShowLogDetail(log)
     end
     
     function self:ShowLogDetail(log)
-        -- 清除详细日志
+        -- 更新代码框
+        if self.codeBox then
+            self.codeBox.Text = log.script
+        end
+        
+        -- 清除详细信息
         if self.detailScroll then
             for _, child in ipairs(self.detailScroll:GetChildren()) do
                 if child:IsA("GuiObject") and not child:IsA("UIListLayout") then
@@ -256,27 +486,39 @@ function RemoteSpy.new(theme, utils, outputManager)
             end
         end
         
-        -- 更新代码框
-        if self.codeBox then
-            self.codeBox.Text = log.script
-        end
-        
         -- 添加详细信息
         if self.detailScroll then
             self:AddDetailEntry("时间", log.timestamp)
             self:AddDetailEntry("方法", log.method)
             self:AddDetailEntry("远程", log.remoteName)
             self:AddDetailEntry("路径", log.remotePath)
+            self:AddDetailEntry("Hook方式", log.metamethod or "unknown")
+            
+            if log.callingScript then
+                self:AddDetailEntry("调用脚本", log.callingScript.Name or "unknown")
+            end
             
             -- 显示参数
             if #log.args > 0 then
                 self:AddDetailEntry("参数", "")
                 for i, arg in ipairs(log.args) do
-                    local argStr = self:ValueToString(arg)
+                    local argStr = valueToString(arg)
+                    if #argStr > 100 then
+                        argStr = argStr:sub(1, 97) .. "..."
+                    end
                     self:AddDetailEntry("  [" .. i .. "]", argStr)
                 end
             else
                 self:AddDetailEntry("参数", "无")
+            end
+            
+            -- 高级信息
+            if self.advancedInfo then
+                if log.functionInfo then
+                    self:AddDetailEntry("函数信息", "可用")
+                end
+                self:AddDetailEntry("调试ID", log.id or "unknown")
+                self:AddDetailEntry("是否阻止", log.blocked and "是" or "否")
             end
         end
         
@@ -313,13 +555,17 @@ function RemoteSpy.new(theme, utils, outputManager)
     end
     
     function self:GenerateScript(method, remote, args)
-        local script = "-- Generated by RemoteSpy\n"
+        local script = "-- 由SimpleSpy生成\n"
         local remotePath = self:GetRemotePath(remote)
         
         if #args > 0 then
             script = script .. "local args = {\n"
             for i, arg in ipairs(args) do
-                script = script .. "    " .. self:ValueToString(arg, 1) .. ",\n"
+                script = script .. "    " .. valueToString(arg, 1) .. ",\n"
+                if i >= 20 then -- 限制参数数量防止过长
+                    script = script .. "    -- ... (还有" .. (#args - 20) .. "个参数)\n"
+                    break
+                end
             end
             script = script .. "}\n\n"
             
@@ -364,66 +610,54 @@ function RemoteSpy.new(theme, utils, outputManager)
         return path
     end
     
-    function self:ValueToString(value, indent)
-        indent = indent or 0
-        local valueType = typeof(value)
-        local indentStr = string.rep("    ", indent)
-        
-        if valueType == "string" then
-            return '"' .. value:gsub('"', '\\"') .. '"'
-        elseif valueType == "number" or valueType == "boolean" then
-            return tostring(value)
-        elseif valueType == "table" then
-            local str = "{\n"
-            for k, v in pairs(value) do
-                str = str .. indentStr .. "    [" .. self:ValueToString(k) .. "] = " .. self:ValueToString(v, indent + 1) .. ",\n"
-            end
-            return str .. indentStr .. "}"
-        elseif valueType == "Instance" then
-            return self:GetRemotePath(value)
-        elseif valueType == "Vector3" then
-            return "Vector3.new(" .. value.X .. ", " .. value.Y .. ", " .. value.Z .. ")"
-        elseif valueType == "CFrame" then
-            return "CFrame.new(" .. tostring(value) .. ")"
-        elseif valueType == "Color3" then
-            return "Color3.new(" .. value.R .. ", " .. value.G .. ", " .. value.B .. ")"
-        else
-            return "nil --[[" .. valueType .. "]]"
-        end
-    end
-    
     function self:CopyCode()
         if self.selected and self.selected.script then
             setclipboard(self.selected.script)
             self.outputManager:LogSuccess("代码已复制到剪贴板")
+        else
+            self.outputManager:LogError("没有选中的远程调用")
         end
     end
     
     function self:RunCode()
         if self.selected then
             local success, result = pcall(function()
-                loadstring(self.selected.script)()
+                local func = loadstring(self.selected.script)
+                if func then
+                    return func()
+                else
+                    error("脚本编译失败")
+                end
             end)
             
             if success then
                 self.outputManager:LogSuccess("代码执行成功")
+                if result ~= nil then
+                    self.outputManager:LogInfo("返回值: " .. tostring(result))
+                end
             else
                 self.outputManager:LogError("执行失败: " .. tostring(result))
             end
+        else
+            self.outputManager:LogError("没有选中的远程调用")
         end
     end
     
     function self:ExcludeRemote()
         if self.selected then
-            self.blacklist[self.selected.remote] = true
-            self.outputManager:LogWarning("已排除: " .. self.selected.remoteName)
+            self.blacklist[self.selected.id] = true
+            self.outputManager:LogWarning("已排除: " .. self.selected.remoteName .. " (ID)")
+        else
+            self.outputManager:LogError("没有选中的远程调用")
         end
     end
     
     function self:BlockRemote()
         if self.selected then
-            self.blocklist[self.selected.remote] = true
-            self.outputManager:LogError("已阻止: " .. self.selected.remoteName)
+            self.blocklist[self.selected.id] = true
+            self.outputManager:LogError("已阻止: " .. self.selected.remoteName .. " (ID)")
+        else
+            self.outputManager:LogError("没有选中的远程调用")
         end
     end
     
@@ -462,7 +696,10 @@ function RemoteSpy.new(theme, utils, outputManager)
         
         -- 清除数据
         self.logs = {}
+        self.remoteLogs = {}
         self.selected = nil
+        self.history = {}
+        self.excluding = {}
         
         -- 重置滚动
         if self.logScroll then
@@ -485,14 +722,47 @@ function RemoteSpy.new(theme, utils, outputManager)
         self.outputManager:LogSuccess("阻止列表已清除")
     end
     
+    function self:ToggleFuncInfo()
+        self.funcEnabled = not self.funcEnabled
+        self.outputManager:LogInfo("函数信息: " .. (self.funcEnabled and "已启用" or "已禁用"))
+    end
+    
+    function self:ToggleCheckCaller()
+        self.logCheckCaller = not self.logCheckCaller
+        self.outputManager:LogInfo("检查调用者: " .. (self.logCheckCaller and "已启用" or "已禁用"))
+    end
+    
+    function self:ToggleAutoBlock()
+        self.autoBlock = not self.autoBlock
+        self.history = {}
+        self.excluding = {}
+        self.outputManager:LogInfo("自动阻止: " .. (self.autoBlock and "已启用" or "已禁用"))
+    end
+    
+    function self:ToggleAdvancedInfo()
+        self.advancedInfo = not self.advancedInfo
+        self.outputManager:LogInfo("高级信息: " .. (self.advancedInfo and "已启用" or "已禁用"))
+    end
+    
     function self:Destroy()
         if self.active then
             self:Stop()
         end
+        
+        -- 清理所有连接
+        for _, connection in pairs(self.connections) do
+            if connection and connection.Disconnect then
+                connection:Disconnect()
+            end
+        end
+        
         self.logs = {}
+        self.remoteLogs = {}
         self.panels = {}
         self.blacklist = {}
         self.blocklist = {}
+        self.history = {}
+        self.excluding = {}
     end
     
     return self
