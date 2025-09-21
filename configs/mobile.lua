@@ -18,7 +18,6 @@ return {
     },
     features = {
         autoComplete = false,
-        syntaxHighlight = false,
         lineNumbers = true,
         keyboardShortcuts = false
     },
