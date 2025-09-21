@@ -599,21 +599,20 @@ function ProExecutor:SetupEventHandlers()
         self.editor:SetText("-- 新脚本\n")
     end)
 
-    -- 自动补全回调
-    self.editor:SetCallback("onAutoComplete", function(word)
-        if #word > 2 then
-            local position = UDim2.new(0, self.mainFrame.Position.X.Offset + 140, 0, self.mainFrame.Position.Y.Offset + 100)
-            self.autoComplete:Show(word, position)
-        else
-            self.autoComplete:Hide()
-        end
-    end)
+-- 在SetupEventHandlers函数中更新自动补全回调
+self.editor:SetCallback("onAutoComplete", function(word)
+    if #word >= 2 then
+        local codeInputPos = self.codeInput.AbsolutePosition
+        local position = UDim2.new(0, codeInputPos.X + 140, 0, codeInputPos.Y + 100)
+        self.autoComplete:Show(word, position)
+    else
+        self.autoComplete:Hide()
+    end
+end)
 
-    self.autoComplete:SetSelectCallback(function(selected, original)
-        local text = self.editor:GetText()
-        local beforeCursor = text:sub(1, #text - #original)
-        self.editor:SetText(beforeCursor .. selected)
-    end)
+self.editor:SetCallback("onHideAutoComplete", function()
+    self.autoComplete:Hide()
+end)
 
     -- 按钮事件
     self.executeBtn.MouseButton1Click:Connect(function()
